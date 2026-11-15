@@ -168,12 +168,12 @@ export function OpggBuildRecommendationPanel({
         ) : (
           <>
             <div className="sobp-grid">
-              <ItemSection title={t('opgg.section.core')} builds={recommendation?.coreItems} itemLimit={3} />
+              <div className="sobp-core-builds" data-testid="three-item-builds"><ItemSection title="三件套推荐" builds={recommendation?.coreItems?.filter((build) => build.ids.length === 3 && build.ids.every((id) => Number.isInteger(id) && id > 0) && new Set(build.ids).size === 3)} itemLimit={3} /></div>
               <RuneSection title={t('opgg.section.runes')} runes={recommendation?.runePages} championName={championName} modeLabel={recommendation?.modeLabel || queueText} />
               <SpellSection title={t('opgg.section.spells')} builds={recommendation?.summonerSpells} limit={MAX_RECOMMENDATION_ROWS} />
             </div>
             <div className="sobp-trend-wrap">
-              <LastItemTrendSection title={t('opgg.section.trends')} builds={recommendation?.lastItems} />
+              <LastItemTrendSection title="后续成装推荐" builds={recommendation?.lastItems} />
             </div>
             <MatchupSection title={t('opgg.section.matchups')} matchups={recommendation?.matchups} />
             {showAugments && <AugmentSection title={t('opgg.section.augments')} groups={recommendation?.augments} />}
@@ -417,6 +417,7 @@ function ItemSection({ title, builds, itemLimit }: { title: string; builds?: Opg
 
 function LastItemTrendSection({ title, builds }: { title: string; builds?: OpggItemBuild[] }) {
   const visibleItems = (builds ?? [])
+    .filter((build) => build.ids.length === 1)
     .flatMap((build, buildIndex) => build.ids.map((id, itemIndex) => ({
       id,
       key: `${buildIndex}-${itemIndex}-${id}`,

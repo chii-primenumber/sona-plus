@@ -977,3 +977,10 @@
   .sobp-body { padding: 12px; }
   .sobp-augment-grid { grid-template-columns: minmax(0, 1fr); }
 }
+
+.sobp-core-builds { grid-column: 1 / -1; min-width: 0; }
+.sobp-core-builds .sobp-row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 20px; align-items: center; }
+.sobp-core-builds .sobp-section-card { display: grid; grid-template-columns: repeat(auto-fit,minmax(290px,1fr)); gap: 0 16px; }
+
+.sobp-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+.sobp-core-builds .sobp-section-card { grid-template-columns: repeat(auto-fit,minmax(min(100%,290px),1fr)); }

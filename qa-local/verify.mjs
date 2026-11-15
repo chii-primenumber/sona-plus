@@ -954,19 +954,46 @@ try {
   }, bp)
   const previewBuild = page.locator('[data-sona-opgg-preselect-build]')
   await previewBuild.waitFor()
+  // Ranked intent phase: lock area hidden, only session data changes.
+  await page.evaluate((base) => {
+    document.querySelector('.lock-in').classList.remove('visible')
+    const session=structuredClone(base); session.queueId=420;session.actions=[]
+    session.myTeam[0].championId=0;session.myTeam[0].championPickIntent=157
+    window.qaEmit('/lol-champ-select/v1/session',session)
+  },bp)
+  await page.waitForFunction(()=>document.querySelector('.bottom-right-buttons > [data-sona-opgg-preselect-build]'))
+  await page.evaluate((base)=>{
+    const session=structuredClone(base);session.queueId=420;session.actions=[]
+    session.myTeam[0].championId=157;session.myTeam[0].championPickIntent=157
+    window.qaEmit('/lol-champ-select/v1/session',session)
+  },bp)
+  await previewBuild.waitFor()
+  await previewBuild.click()
+  await page.locator('#sona-opgg-build-panel .sobp-title-name').getByText(/亚索/).waitFor()
+  await page.locator('#sona-opgg-build-panel .sobp-close').click()
+  await page.evaluate((base)=>{
+    const session=structuredClone(base);session.actions=[];session.myTeam[0].championId=0;session.myTeam[0].championPickIntent=0
+    window.qaEmit('/lol-champ-select/v1/session',session)
+  },bp)
+  await previewBuild.waitFor({state:'detached'})
+  await page.evaluate((session)=>{document.querySelector('.lock-in').classList.add('visible');window.qaEmit('/lol-champ-select/v1/session',session)},bp)
+  await previewBuild.waitFor()
   assert.ok((await previewBuild.boundingBox()).x < (await page.getByRole('button',{name:'锁定',exact:true}).boundingBox()).x)
   await previewBuild.click()
   const buildPanel = page.locator('#sona-opgg-build-panel')
   await buildPanel.locator('.sobp-title-name').getByText(/亚索/).waitFor()
   await buildPanel.locator('.sobp-recommendation-stats').first().waitFor()
-  const coreRows=buildPanel.locator('.sobp-grid > .sobp-section').nth(0).locator('.sobp-row')
+  const coreRows=buildPanel.getByTestId('three-item-builds').locator('.sobp-row')
+  assert.equal(await coreRows.nth(0).locator('.sobp-icon-step').count(),3)
+  await buildPanel.getByText('三件套推荐',{exact:true}).waitFor()
+  await buildPanel.getByText('后续成装推荐',{exact:true}).waitFor()
   assert.equal(await coreRows.nth(0).locator('.sobp-pick-rate strong').textContent(),'31.3%')
   assert.equal(await coreRows.nth(0).locator('.sobp-win-rate strong').textContent(),'60.0%')
   assert.equal(await coreRows.nth(1).locator('.sobp-win-rate strong').textContent(),'0.0%')
   assert.equal(await coreRows.nth(2).locator('.sobp-win-rate strong').textContent(),'—')
   assert.equal(await coreRows.nth(3).locator('.sobp-win-rate strong').textContent(),'—')
-  assert.equal(await buildPanel.locator('.sobp-grid > .sobp-section').nth(1).locator('.sobp-win-rate strong').first().textContent(),'67.0%')
-  assert.equal(await buildPanel.locator('.sobp-grid > .sobp-section').nth(2).locator('.sobp-win-rate strong').first().textContent(),'74.0%')
+  assert.equal(await buildPanel.locator('.sobp-grid > .sobp-section').nth(0).locator('.sobp-win-rate strong').first().textContent(),'67.0%')
+  assert.equal(await buildPanel.locator('.sobp-grid > .sobp-section').nth(1).locator('.sobp-win-rate strong').first().textContent(),'74.0%')
   assert.equal(await buildPanel.locator('.sobp-win-rate .sobp-stat-track').count(),0)
   assert.equal(await buildPanel.locator('.sobp-stat-track').count(),await buildPanel.locator('.sobp-pick-rate').count())
   async function assertBuildLayout() {
@@ -985,13 +1012,13 @@ try {
   }
   await page.mouse.move(2,2)
   await assertBuildLayout()
-  await buildPanel.locator('.sobp-grid > .sobp-section').nth(2).locator('.sobp-icon-tooltip-wrap').first().hover()
+  await buildPanel.locator('.sobp-grid > .sobp-section').nth(1).locator('.sobp-icon-tooltip-wrap').first().hover()
   await page.locator('.sobp-official-tooltip--ready').waitFor()
   const buildTitleRect=await buildPanel.locator('.sobp-titlebar').boundingBox()
   const buildTooltipRect=await page.locator('.sobp-official-tooltip--ready').boundingBox()
   assert.ok(buildTooltipRect.y>=buildTitleRect.y+buildTitleRect.height)
   await page.mouse.move(2,2)
-  await page.locator('.sobp-official-tooltip').waitFor({state:'detached'})
+  await page.waitForFunction(()=>document.querySelectorAll('.sobp-official-tooltip').length===0)
   await buildPanel.locator('.sobp').screenshot({path:path.join(out,'配装选取率与胜率_模拟数据.png')})
   await page.setViewportSize({width:1024,height:720})
   await page.waitForFunction(()=>{const panel=document.querySelector('#sona-opgg-build-panel .sobp');return panel&&panel.getBoundingClientRect().right<=innerWidth-19})

@@ -221,3 +221,5 @@
 .game-in-progress-container [data-sona-opgg-ingame-build] + [data-sona-game-analysis] {
   margin-top: 8px;
 }
+
+.bottom-right-buttons > [data-sona-opgg-preselect-build] { display: inline-block; position: relative; margin: 3px 7px; width: 110px; height: 30px; pointer-events: auto; cursor: pointer; }

@@ -1,10 +1,11 @@
 /**
- * 玩家对比弹窗（DSH 优化版）
+ * 玩家对比弹窗
  *
  * 两名玩家都从同一批已加载对局取数，不额外请求；样本、模式、时间窗口天然一致。
  */
 import { useEffect, useMemo, useState } from 'react'
 import { Modal } from './Modal'
+import { HistoryRadar } from './HistoryRadar'
 import type { PlayerScoreSystem } from '@/lib/player-score'
 import { formatPlayerScore, playerScoreLabel } from '@/lib/player-score'
 import { compareHighlight, comparePlayers, formatCompareDelta, formatCompareValue, type CompareRow } from '@/lib/chart-compare'
@@ -12,19 +13,6 @@ import type { SgpGameSummaryLol } from '@/types/sgp'
 import '@/styles/HistoryCharts.css'
 
 export interface CompareCandidate { puuid: string; name: string }
-
-const RADAR = { width: 320, height: 300, cx: 160, cy: 152, radius: 102 }
-
-function point(index: number, total: number, radius: number) {
-  const angle = -Math.PI / 2 + (index * 2 * Math.PI) / total
-  return { x: RADAR.cx + Math.cos(angle) * radius, y: RADAR.cy + Math.sin(angle) * radius }
-}
-
-function ring(total: number, radius: number) {
-  return Array.from({ length: total }, (_, index) => point(index, total, radius))
-    .map((item) => `${item.x.toFixed(1)},${item.y.toFixed(1)}`)
-    .join(' ')
-}
 
 export function HistoryCompareModal({ open, onClose, games, puuid, system, candidates }: {
   open: boolean
@@ -54,7 +42,7 @@ export function HistoryCompareModal({ open, onClose, games, puuid, system, candi
     <div className="rh-shell rh-compare">
       <header className="rh-chart-head">
         <h3>玩家对比</h3>
-        <span className="rh-dsh-badge">DSH 优化版</span>
+
         <span className="rh-chart-hint">同批对局 · Sona 八维雷达</span>
       </header>
       {!candidates.length ? <p className="rh-muted">当前对局里没有其他可对比的玩家。</p> : (
@@ -70,26 +58,7 @@ export function HistoryCompareModal({ open, onClose, games, puuid, system, candi
           {result ? (
             <div className="rh-compare-body">
               <div className="rh-compare-radar">
-                <svg viewBox={`0 0 ${RADAR.width} ${RADAR.height}`} role="img"
-                  aria-label={`${result.aName} 与 ${result.bName} 的雷达对比`}>
-                  {[1, 2, 3, 4].map((level) => <polygon key={level} points={ring(axes.length, (RADAR.radius * level) / 4)} className="rh-radar-ring" />)}
-                  {axes.map((axis, index) => {
-                    const end = point(index, axes.length, RADAR.radius)
-                    return <line key={axis.key} x1={RADAR.cx} y1={RADAR.cy} x2={end.x} y2={end.y} className="rh-radar-spoke" />
-                  })}
-                  <polygon className="rh-radar-shape-b" points={result.b.axes
-                    .map((axis, index) => point(index, axes.length, RADAR.radius * axis.value))
-                    .map((item) => `${item.x.toFixed(1)},${item.y.toFixed(1)}`).join(' ')} />
-                  <polygon className="rh-radar-shape" points={result.a.axes
-                    .map((axis, index) => point(index, axes.length, RADAR.radius * axis.value))
-                    .map((item) => `${item.x.toFixed(1)},${item.y.toFixed(1)}`).join(' ')} />
-                  {axes.map((axis, index) => {
-                    const label = point(index, axes.length, RADAR.radius + 18)
-                    const anchor = Math.abs(label.x - RADAR.cx) < 10 ? 'middle' : label.x > RADAR.cx ? 'start' : 'end'
-                    const dy = label.y < RADAR.cy - 20 ? -2 : label.y > RADAR.cy + 20 ? 9 : 3
-                    return <text key={axis.key} x={label.x} y={label.y + dy} textAnchor={anchor} className="rh-radar-label">{axis.label}</text>
-                  })}
-                </svg>
+                <HistoryRadar axes={axes} secondary={result.b.axes} label={`${result.aName} 与 ${result.bName} 的 Sona 八维雷达对比`} />
                 <div className="rh-compare-legend">
                   <span><i className="is-a" />{result.aName} · {playerScoreLabel(system)} {formatPlayerScore(result.aScore ?? NaN, system)}</span>
                   <span><i className="is-b" />{result.bName} · {playerScoreLabel(system)} {formatPlayerScore(result.bScore ?? NaN, system)}</span>

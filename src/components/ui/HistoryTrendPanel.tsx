@@ -1,8 +1,8 @@
 /**
- * 趋势与雷达面板（DSH 优化版）
+ * 趋势与雷达面板
  *
  * 数据全部来自当前已加载对局；不落盘、不发请求。
- * 雷达量纲：Sona 8 维（0–100 内部分）、Akari 9 项（按满分归一化），统一映射到 0–1。
+ * 雷达固定使用 Sona 八维，趋势评分随全局评分机制切换。
  */
 import { useMemo, useState } from 'react'
 import type { HistoryMatch } from '@/lib/history-model'
@@ -15,57 +15,10 @@ import {
   TREND_METRICS,
   type TrendMetricKey,
 } from '@/lib/chart-series'
-import { buildRadarProfile, type RadarAxis } from '@/lib/chart-radar'
+import { buildRadarProfile } from '@/lib/chart-radar'
 import type { SgpGameSummaryLol } from '@/types/sgp'
 import '@/styles/HistoryCharts.css'
-
-const RADAR = { width: 320, height: 300, cx: 160, cy: 152, radius: 104 }
-
-function axisPoint(index: number, total: number, radius: number) {
-  const angle = -Math.PI / 2 + (index * 2 * Math.PI) / total
-  return { x: RADAR.cx + Math.cos(angle) * radius, y: RADAR.cy + Math.sin(angle) * radius }
-}
-
-function ringPoints(total: number, radius: number) {
-  return Array.from({ length: total }, (_, index) => axisPoint(index, total, radius))
-    .map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`)
-    .join(' ')
-}
-
-function polygonPoints(axes: RadarAxis[], radius: number) {
-  return axes
-    .map((axis, index) => {
-      const point = axisPoint(index, axes.length, radius * Math.max(0, Math.min(1, axis.value)))
-      return `${point.x.toFixed(1)},${point.y.toFixed(1)}`
-    })
-    .join(' ')
-}
-
-function RadarChart({ axes, system }: { axes: RadarAxis[]; system: PlayerScoreSystem }) {
-  return (
-    <svg className="rh-radar" viewBox={`0 0 ${RADAR.width} ${RADAR.height}`} role="img"
-      aria-label={`${playerScoreLabel(system)} ${axes.length} 维雷达图：${axes.map((axis) => `${axis.label}${Math.round(axis.value * 100)}`).join('，')}`}>
-      {[1, 2, 3, 4].map((ring) => (
-        <polygon key={ring} points={ringPoints(axes.length, (RADAR.radius * ring) / 4)} className="rh-radar-ring" />
-      ))}
-      {axes.map((axis, index) => {
-        const point = axisPoint(index, axes.length, RADAR.radius)
-        return <line key={axis.key} x1={RADAR.cx} y1={RADAR.cy} x2={point.x} y2={point.y} className="rh-radar-spoke" />
-      })}
-      <polygon points={polygonPoints(axes, RADAR.radius)} className="rh-radar-shape" />
-      {axes.map((axis, index) => {
-        const point = axisPoint(index, axes.length, RADAR.radius * Math.max(0, Math.min(1, axis.value)))
-        return <circle key={`${axis.key}-dot`} cx={point.x} cy={point.y} r={2.2} className="rh-radar-dot" />
-      })}
-      {axes.map((axis, index) => {
-        const point = axisPoint(index, axes.length, RADAR.radius + 18)
-        const anchor = Math.abs(point.x - RADAR.cx) < 10 ? 'middle' : point.x > RADAR.cx ? 'start' : 'end'
-        const dy = point.y < RADAR.cy - 20 ? -2 : point.y > RADAR.cy + 20 ? 9 : 3
-        return <text key={`${axis.key}-label`} x={point.x} y={point.y + dy} textAnchor={anchor} className="rh-radar-label">{axis.label}</text>
-      })}
-    </svg>
-  )
-}
+import { HistoryRadar } from './HistoryRadar'
 
 function TrendChart({ values, labels, formatValue }: {
   values: Array<number | null>
@@ -144,7 +97,7 @@ export function HistoryTrendPanel({ matches, games, puuid, system, score }: {
       <section className="rh-chart-card">
         <header className="rh-chart-head">
           <h3>个人能力 · Sona 八维</h3>
-          <span className="rh-dsh-badge">DSH 优化版</span>
+
           <span className="rh-chart-hint">
             {matches.length} 场已加载 · 有效 {radar ? radar.validGames : 0} 场
             {radar && radar.confidence != null ? ` · 置信度 ${radar.confidence.toFixed(2)}` : ''}
@@ -152,7 +105,7 @@ export function HistoryTrendPanel({ matches, games, puuid, system, score }: {
         </header>
         {radar ? (
           <div className="rh-radar-wrap">
-            <RadarChart axes={radar.axes} system={system} />
+            <HistoryRadar axes={radar.axes} label="Sona 八维能力雷达" />
             <div className="rh-radar-side">
               <div className="rh-radar-rows">
                 {radar.axes.map((axis) => (
@@ -166,7 +119,7 @@ export function HistoryTrendPanel({ matches, games, puuid, system, score }: {
               <p className="rh-chart-note">
                 {playerScoreLabel(system)} {formatPlayerScore(score ? score.score : NaN, system)}
                 {score ? ` / ${score.maxScore} 分（左侧评分卡同源）` : ''}。
-                雷达为 Sona 八维能力画像（0–100 内部分），与当前评分机制无关；样本不足 5 场时结论仅供参考。
+                雷达为 Sona 八维能力画像（0–100 内部分），与当前评分机制无关。
               </p>
             </div>
           </div>

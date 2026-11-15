@@ -167,6 +167,8 @@ function isLocalChampionLocked(session: ChampSelectSession): boolean {
     .filter((action) => action.actorCellId === session.localPlayerCellId && action.type === 'pick')
 
   if (localPickActions.length === 0) {
+    // Ranked intent updates may omit actions. A nonzero preview is not a completed pick.
+    if (isRankedQueue(session.queueId ?? 0)) return ['FINALIZATION', 'GAME_STARTING'].includes(session.timer?.phase ?? '')
     return true
   }
 
@@ -1352,6 +1354,11 @@ async function refreshContext(session?: ChampSelectSession) {
     const localPlayer = getLocalPlayer(currentSession)
     const queueId = currentSession.queueId ?? 0
     const championId = getLocalChampionId(currentSession)
+    // The entry follows local selection immediately; external position lookup must not gate it.
+    currentChampionLocked = isLocalChampionLocked(currentSession)
+    if (championId !== currentContext.championId) closePanel()
+    currentContext = { ...currentContext, championId, queueId, position: mapAssignedPosition(localPlayer?.assignedPosition), gameMode: getQueue(queueId)?.gameMode || '' }
+    if (store.get('opggBuildRecommendation')) { mount(); tryInjectPreselectBuildButton() }
     const gameMode = await resolveGameMode(queueId)
     const assignedPosition = mapAssignedPosition(localPlayer?.assignedPosition)
     const position = await resolveInitialRecommendationPosition({
@@ -2173,7 +2180,9 @@ function unregisterInGameBuildButton() {
 }
 
 function tryInjectPreselectBuildButton(): boolean {
-  const host = document.querySelector<HTMLElement>('.lock-in.visible')
+  const lock = document.querySelector<HTMLElement>('.lock-in.visible')
+  const host = lock && lock.getClientRects().length && getComputedStyle(lock).visibility !== 'hidden'
+    ? lock : document.querySelector<HTMLElement>('.bottom-right-buttons')
   const previous = document.querySelector<HTMLElement>(`[${PRESELECT_BUILD_BUTTON_ATTR}]`)
   if (!host || currentChampionLocked || currentContext.championId <= 0) {
     previous?.remove()
@@ -2188,7 +2197,6 @@ function tryInjectPreselectBuildButton(): boolean {
   button.textContent = '配装推荐'
   const open = async () => {
     try {
-      await refreshContext()
       if (currentContext.championId > 0) await openRecommendationPanel(button, { ...currentContext })
     } catch {
       if (typeof Toast !== 'undefined') Toast.error('配装推荐打开失败')
@@ -2212,7 +2220,7 @@ function tryInjectPreselectBuildButton(): boolean {
 function mount() {
   if (!injectRegistered) {
     injector.register(tryHijackAbilityPreviewPanel, { selector: TARGET_SELECTOR })
-    injector.register(tryInjectPreselectBuildButton, { selector: '.lock-in' })
+    injector.register(tryInjectPreselectBuildButton, { selector: '.lock-in, .bottom-right-buttons' })
     injectRegistered = true
     logger.info('[OPGG] 已检测到本地英雄，开始接管技能预览入口')
   }
