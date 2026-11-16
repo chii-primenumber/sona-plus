@@ -22,6 +22,26 @@ export async function verifyUiOptimizations(page) {
     return { batched, owned, filtered, rebuilt, stopped }
   })
   assert.deepEqual(scans, { batched: 2, owned: 2, filtered: 2, rebuilt: 3, stopped: 3 })
+  const hiddenScans = await page.evaluate(async () => {
+    const { InjectorManager } = await import('/src/lib/InjectorManager.ts')
+    const manager = new InjectorManager(), host = document.createElement('div')
+    document.body.append(host)
+    let calls = 0
+    manager.register(() => { calls++; return true }); manager.start()
+    try {
+      Object.defineProperty(document, 'hidden', { configurable: true, value: true })
+      document.dispatchEvent(new Event('visibilitychange'))
+      for (let i = 0; i < 1000; i++) host.append(document.createElement('span'))
+      await new Promise((resolve) => setTimeout(resolve, 180))
+      const hidden = { calls, records: manager.records.length, frame: manager.frame, timer: manager.timer }
+      delete document.hidden; document.dispatchEvent(new Event('visibilitychange'))
+      const resumed = calls
+      manager.stop()
+      document.dispatchEvent(new Event('visibilitychange'))
+      return { hidden, resumed, stopped: calls }
+    } finally { delete document.hidden; manager.stop(); host.remove() }
+  })
+  assert.deepEqual(hiddenScans, { hidden: { calls: 1, records: 0, frame: 0, timer: 0 }, resumed: 2, stopped: 2 })
 
   await page.emulateMedia({ reducedMotion: 'no-preference' })
   const animation = await page.evaluate(async () => {

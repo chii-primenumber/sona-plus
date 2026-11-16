@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Modal } from './Modal'
 import { PlayerHistoryModal } from './PlayerHistoryModal'
 import { ChampionStrip, HistoryImage, MatchReport, championName } from './HistoryWidgets'
@@ -213,16 +213,16 @@ function TeamSection({ team, queueId, count, open, hidden, onInspect, onMatch, r
           const party = member.premade ? parties.indexOf(member.premade) : -1
           return <TeamPlayerCard key={member.key} member={member} queueId={queueId} count={count} open={open} hidden={hidden}
             premade={party >= 0 ? String.fromCharCode(65 + party) : undefined} revision={revision}
-            onInspect={(name) => onInspect(member.puuid, name)} onMatch={onMatch} updateSummary={updateSummary} />
+            onInspect={onInspect} onMatch={onMatch} updateSummary={updateSummary} />
         })}
       </div>
     </section>
   )
 }
 
-function TeamPlayerCard({ member, queueId, count, open, hidden, premade, onInspect, onMatch, updateSummary, revision }: {
+const TeamPlayerCard = memo(function TeamPlayerCard({ member, queueId, count, open, hidden, premade, onInspect, onMatch, updateSummary, revision }: {
   member: Member; queueId: number; count: number; open: boolean; hidden: HistoryHiddenFields; premade?: string
-  onInspect: (name: string) => void; onMatch: (match: HistoryMatch) => void
+  onInspect: (puuid: string, name: string) => void; onMatch: (match: HistoryMatch) => void
   updateSummary: (key: string, stats: PlayerSummary | null) => void
   revision: number
 }) {
@@ -246,8 +246,8 @@ function TeamPlayerCard({ member, queueId, count, open, hidden, premade, onInspe
   const allValid = useMemo(() => validMatches(matches), [matches])
   const selectedMatches = useMemo(()=>championFilter ? matches.filter((match)=>match.player.championId===championFilter) : matches,[matches,championFilter])
   const allStats = useMemo(() => summarize(matches), [matches])
-  const stats = useMemo(() => summarize(selectedMatches), [selectedMatches])
-  const valid = useMemo(() => validMatches(selectedMatches), [selectedMatches])
+  const stats = useMemo(() => selectedMatches === matches ? allStats : summarize(selectedMatches), [selectedMatches, matches, allStats])
+  const valid = useMemo(() => selectedMatches === matches ? allValid : validMatches(selectedMatches), [selectedMatches, matches, allValid])
   useEffect(()=>recentRef.current ? bindScrollbarHighlight(recentRef.current) : undefined,[pages.loading,stats.total,hidden])
   useEffect(()=>{ setChampionFilter(0) },[queueId,member.puuid])
   useEffect(()=>{
@@ -282,7 +282,7 @@ function TeamPlayerCard({ member, queueId, count, open, hidden, premade, onInspe
   return (
     <article className={`rh-team-card${member.self ? ' is-self' : ''}`} data-sona-premade={premade || undefined}
       style={partyColor ? {borderColor:partyColor,'--rh-premade-glow':`${partyColor}35`} as CSSProperties : undefined}>
-      <button type="button" className="rh-team-card-head" aria-label={`查看 ${name} 的战绩`} disabled={!member.puuid} onClick={() => onInspect(name)}>
+      <button type="button" className="rh-team-card-head" aria-label={`查看 ${name} 的战绩`} disabled={!member.puuid} onClick={() => onInspect(member.puuid, name)}>
         <span className="rh-team-portrait">
           <HistoryImage src={portraitChampion ? getChampIcon(portraitChampion) : profileIconUrl(profile?.profileIconId ?? valid[0]?.player.profileIcon)} label={portraitChampion ? championName(portraitChampion) : name} nativeTooltip={Boolean(portraitChampion)} />
           {profile?.summonerLevel && <small>{profile.summonerLevel}</small>}
@@ -344,4 +344,4 @@ function TeamPlayerCard({ member, queueId, count, open, hidden, premade, onInspe
         </>}
     </article>
   )
-}
+})

@@ -415,6 +415,7 @@ export class OpggDataApi {
     path: string,
     options: OpggRequestOptions & { params?: QueryParams } = {},
   ): Promise<T> {
+    if (options.signal?.aborted) throw new DOMException('查询已取消', 'AbortError')
     const url = new URL(path, OpggDataApi.BASE_URL)
     Object.entries(options.params ?? {}).forEach(([key, value]) => {
       if (value != null && value !== '') url.searchParams.set(key, String(value))

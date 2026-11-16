@@ -1,9 +1,18 @@
-import { useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { HistoryMatchCard } from './HistoryWidgets'
 import type { HistoryMatch } from '@/lib/history-model'
 import type { HistoryHiddenFields } from '@/lib/history-display'
 
-export function HistoryMatchList({ matches, hidden, onInspect, scrollRef, expanded, onExpandedChange }: {
+type RowProps = { match: HistoryMatch; hidden: HistoryHiddenFields; onInspect: (puuid: string, name: string) => void
+  expanded: boolean; onExpandedChange: (id: string, value: boolean) => void }
+const HistoryMatchRow = memo(function HistoryMatchRow({ match, hidden, onInspect, expanded, onExpandedChange }: RowProps) {
+  const change = useCallback((value: boolean) => onExpandedChange(match.id, value), [match.id, onExpandedChange])
+  return <div className="rh-match-slot" data-match-id={match.id}>
+    <HistoryMatchCard match={match} hidden={hidden} onInspect={onInspect} expanded={expanded} onExpandedChange={change} />
+  </div>
+})
+
+export const HistoryMatchList = memo(function HistoryMatchList({ matches, hidden, onInspect, scrollRef, expanded, onExpandedChange }: {
   matches: HistoryMatch[]; hidden: HistoryHiddenFields; onInspect: (puuid: string, name: string) => void
   scrollRef: RefObject<HTMLDivElement | null>; expanded: ReadonlySet<string>; onExpandedChange: (id: string, value: boolean) => void
 }) {
@@ -24,6 +33,7 @@ export function HistoryMatchList({ matches, hidden, onInspect, scrollRef, expand
     while (end < matches.length && offsets[end] < viewport.top + viewport.height + 700) end++
   }
   useLayoutEffect(() => {
+    if (!virtual) return
     const scroller = scrollRef.current, list = listRef.current
     if (!scroller || !list) return
     let frame = 0
@@ -38,13 +48,14 @@ export function HistoryMatchList({ matches, hidden, onInspect, scrollRef, expand
     return () => { cancelAnimationFrame(frame); observer.disconnect(); scroller.removeEventListener('scroll', schedule) }
   }, [scrollRef, matches, virtual])
   useLayoutEffect(() => {
+    if (!virtual) return
     const list = listRef.current
     if (!list) return
     const observer = new ResizeObserver((entries) => {
       let changed = false, correction = 0
       for (const entry of entries) {
         const node = entry.target as HTMLElement, id = node.dataset.matchId!
-        const height = node.getBoundingClientRect().height
+        const height = entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height
         const previous = heights.current.get(id) ?? 132
         if (Math.abs(previous - height) < 1) continue
         // Keep the visible row anchored when an overscanned row above it changes height.
@@ -56,16 +67,15 @@ export function HistoryMatchList({ matches, hidden, onInspect, scrollRef, expand
     })
     list.querySelectorAll('.rh-match-slot').forEach((node) => observer.observe(node))
     return () => observer.disconnect()
-  }, [matches, start, end, hidden, expanded, virtual, scrollRef])
+  }, [matches, start, end, virtual, scrollRef])
   useLayoutEffect(() => {
     const ids = new Set(matches.map((match) => match.id))
     for (const id of heights.current.keys()) if (!ids.has(id)) heights.current.delete(id)
   }, [matches])
   return <div ref={listRef} className="rh-match-list" data-virtualized={virtual || undefined}>
     {virtual && <div aria-hidden="true" style={{ height: offsets[start] }} />}
-    {matches.slice(start, end).map((match) => <div className="rh-match-slot" data-match-id={match.id} key={match.id}>
-      <HistoryMatchCard match={match} hidden={hidden} onInspect={onInspect} expanded={expanded.has(match.id)} onExpandedChange={(value) => onExpandedChange(match.id, value)} />
-    </div>)}
+    {matches.slice(start, end).map((match) => <HistoryMatchRow key={match.id} match={match} hidden={hidden} onInspect={onInspect}
+      expanded={expanded.has(match.id)} onExpandedChange={onExpandedChange} />)}
     {virtual && <div aria-hidden="true" style={{ height: offsets[matches.length] - offsets[end] }} />}
   </div>
-}
+})

@@ -6,13 +6,17 @@ const PLUGIN_SURFACES = '#sona-root, .sona-modal-overlay, .sobp, .sona-entry-btn
 let initialized = false
 let tooltipRoot: Root | undefined
 let active: HTMLElement | undefined
+let activeText = ''
 
 export function initSonaTooltips() {
   if (initialized) return
   initialized = true
+  const removalObserver = new MutationObserver(() => { if (active && !active.isConnected) hide() })
   function hide() {
     if (!active) return
     active = undefined
+    activeText = ''
+    removalObserver.disconnect()
     tooltipRoot?.render(null)
   }
   function show(event: Event) {
@@ -20,12 +24,15 @@ export function initSonaTooltips() {
     if (!(element instanceof HTMLElement) || !element.closest(PLUGIN_SURFACES)) { hide(); return }
     const text = element.getAttribute('title') || element.dataset.sonaTooltip
     if (!text) { hide(); return }
+    if (active === element && activeText === text) return
     if (element.hasAttribute('title')) {
       element.dataset.sonaTooltip = text
       element.removeAttribute('title')
       if (!element.hasAttribute('aria-description')) element.setAttribute('aria-description', text)
     }
     active = element
+    activeText = text
+    removalObserver.observe(document.body, { childList: true, subtree: true })
     if (!tooltipRoot) {
       const host = document.createElement('div')
       document.body.append(host)
@@ -43,5 +50,8 @@ export function initSonaTooltips() {
   document.addEventListener('focusin', show, true)
   document.addEventListener('mouseout', leave, true)
   document.addEventListener('focusout', leave, true)
+  document.addEventListener('pointerdown', hide, true)
+  document.addEventListener('keydown', hide, true)
+  document.addEventListener('visibilitychange', () => { if (document.hidden) hide() })
   window.addEventListener('blur', hide)
 }

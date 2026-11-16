@@ -34,6 +34,7 @@ import {
 } from '@/lib/opgg-api'
 import type { GameflowPhase } from '@/types/lcu'
 import { translate } from '@/i18n'
+import { SharedRequests } from '@/lib/shared-requests'
 
 const TARGET_SELECTOR = '.toggle-ability-previews-button'
 const HIJACK_ATTR = 'data-sona-opgg-build-hijacked'
@@ -79,6 +80,7 @@ interface RecommendationCacheEntry {
   data?: BuildRecommendation | null
   error?: string
   updatedAt: number
+  controller: AbortController
 }
 
 type SmartRuneSnapshot = Pick<RunePagePayload, 'primaryStyleId' | 'subStyleId' | 'selectedPerkIds'>
@@ -95,6 +97,8 @@ interface ObservedSmartSpellSnapshot {
 }
 
 const MAX_RECOMMENDATION_CACHE_SIZE = 8
+const RECOMMENDATION_TTL_MS = 10 * 60 * 1000
+const recommendationRequests = new SharedRequests(3, 0, 30000)
 
 let phaseUnsub: (() => void) | null = null
 let champSelectUnsub: (() => void) | null = null
@@ -117,14 +121,17 @@ let currentContext: RecommendationContext = {
 let currentChampionLocked = false
 const boundElements: Array<{ el: HTMLElement; handler: EventListener; originalText: string }> = []
 const recommendationCache = new Map<string, RecommendationCacheEntry>()
-const commonPositionMapCache = new Map<string, Promise<Map<number, OpggPosition>>>()
+const commonPositionMapCache = new Map<string, { promise: Promise<Map<number, OpggPosition>>; expires: number }>()
 let outsideCloseHandler: ((event: MouseEvent) => void) | null = null
 let activePanelKey = ''
+let panelOpenToken = 0
+let panelOutsideFrame = 0
 let panelReactRoot: Root | null = null
 let panelLayoutCleanup: (() => void) | null = null
 let inGameModalRoot: Root | null = null
 let inGameModalContainer: HTMLDivElement | null = null
 let inGameModalRenderToken = 0
+let inGameModalCloseTimer = 0
 let lastAppliedItemSetKey = ''
 let lastAppliedRuneKey = ''
 let lastAppliedSpellKey = ''
@@ -194,7 +201,7 @@ function getPositionPopularity(position: OpggRankedPosition): number {
 function ensureCommonPositionMap(tier: OpggTier, region: 'kr' | 'global'): Promise<Map<number, OpggPosition>> {
   const key = `${region}:${tier}`
   const cached = commonPositionMapCache.get(key)
-  if (cached) return cached
+  if (cached && cached.expires > Date.now()) return cached.promise
 
   const promise = opggApi.getChampionsTier({
     region,
@@ -221,11 +228,13 @@ function ensureCommonPositionMap(tier: OpggTier, region: 'kr' | 'global'): Promi
     logger.info('[OPGG] 英雄常见分路表已缓存 → tier=%s, champions=%d', tier, positionsByChampion.size)
     return positionsByChampion
   }).catch((err) => {
-    commonPositionMapCache.delete(key)
+    if (commonPositionMapCache.get(key)?.promise === promise) commonPositionMapCache.delete(key)
     throw err
   })
 
-  commonPositionMapCache.set(key, promise)
+  commonPositionMapCache.delete(key)
+  commonPositionMapCache.set(key, { promise, expires: Date.now() + RECOMMENDATION_TTL_MS })
+  while (commonPositionMapCache.size > 12) commonPositionMapCache.delete(commonPositionMapCache.keys().next().value!)
   return promise
 }
 
@@ -602,23 +611,31 @@ function ensureRecommendationPrefetch(context: RecommendationContext): Recommend
   const snapshot = { ...context }
   const key = getRecommendationCacheKey(snapshot)
   const cached = recommendationCache.get(key)
-  if (cached) return cached
+  if (cached && (cached.data === undefined || Date.now() - cached.updatedAt < (cached.error ? 5000 : RECOMMENDATION_TTL_MS))) {
+    recommendationCache.delete(key); recommendationCache.set(key, cached)
+    return cached
+  }
+  cached?.controller.abort()
+  const tier = getEffectiveOpggTier(snapshot)
 
   const entry: RecommendationCacheEntry = {
     key,
     context: snapshot,
     updatedAt: Date.now(),
     promise: Promise.resolve(null),
+    controller: new AbortController(),
   }
 
-  entry.promise = loadRecommendation(snapshot)
+  entry.promise = recommendationRequests.run(key, (signal) => loadRecommendation(snapshot, signal, tier), { signal: entry.controller.signal })
     .then((data) => {
+      if (entry.controller.signal.aborted) { entry.data = null; return null }
       entry.data = data
       entry.updatedAt = Date.now()
       logger.info('[OPGG] 配装推荐缓存完成 → %s', key)
       return data
     })
     .catch((err) => {
+      if (entry.controller.signal.aborted) { entry.data = null; return null }
       entry.error = err instanceof Error ? err.message : String(err)
       entry.data = null
       entry.updatedAt = Date.now()
@@ -635,10 +652,10 @@ function ensureRecommendationPrefetch(context: RecommendationContext): Recommend
 function trimRecommendationCache() {
   if (recommendationCache.size <= MAX_RECOMMENDATION_CACHE_SIZE) return
 
-  const entries = Array.from(recommendationCache.values())
-    .sort((a, b) => a.updatedAt - b.updatedAt)
-  for (const entry of entries.slice(0, recommendationCache.size - MAX_RECOMMENDATION_CACHE_SIZE)) {
+  while (recommendationCache.size > MAX_RECOMMENDATION_CACHE_SIZE) {
+    const entry = recommendationCache.values().next().value!
     recommendationCache.delete(entry.key)
+    entry.controller.abort()
   }
 }
 
@@ -1421,20 +1438,20 @@ async function refreshContext(session?: ChampSelectSession) {
   }
 }
 
-async function loadRecommendation(context: RecommendationContext): Promise<BuildRecommendation | null> {
+async function loadRecommendation(context: RecommendationContext, signal?: AbortSignal, tier = getEffectiveOpggTier(context)): Promise<BuildRecommendation | null> {
   if (context.championId <= 0) return null
 
   const mode = resolveOpggMode(context)
   const position = mode === 'ranked'
     ? (context.position === 'none' ? FALLBACK_OPGG_POSITION : context.position)
     : 'none'
-  const tier = getEffectiveOpggTier(context)
 
   if (isKiwiMode(context)) {
-    return loadAramggKiwiRecommendation(context, mode, position, tier)
+    return loadAramggKiwiRecommendation(context, mode, position, tier, signal)
   }
 
   const mainChampion = await getChampionWithVersionFallback({
+    signal,
     id: context.championId,
     mode,
     tier,
@@ -1472,9 +1489,11 @@ async function loadAramggKiwiRecommendation(
   mode: OpggMode,
   position: OpggPosition,
   tier: OpggTier,
+  signal?: AbortSignal,
 ): Promise<BuildRecommendation | null> {
   const [opggChampion, aramgg, mayhemAugments] = await Promise.all([
     getChampionWithVersionFallback({
+      signal,
       id: context.championId,
       mode,
       tier,
@@ -1483,8 +1502,8 @@ async function loadAramggKiwiRecommendation(
       logger.warn('[OPGG] KIWI 基础配装请求失败，将只使用 ARAM.GG 数据:', err)
       return null
     }),
-    aramggApi.getChampionRecommendation(context.championId),
-    aramggApi.getMayhemAugmentsZhCn().catch((err) => {
+    aramggApi.getChampionRecommendation(context.championId, { signal }),
+    aramggApi.getMayhemAugmentsZhCn({ signal }).catch((err) => {
       logger.warn('[ARAMGG] 海克斯稀有度请求失败，将尝试使用客户端资源兜底:', err)
       return {} as AramggMayhemAugments
     }),
@@ -1691,11 +1710,12 @@ async function getChampionWithVersionFallback(options: {
   tier: OpggTier
   position?: OpggPosition
   version?: string
+  signal?: AbortSignal
 }): Promise<OpggChampion> {
   try {
     return await opggApi.getChampion({ ...options, region: 'global' })
   } catch (err) {
-    if (!options.version) throw err
+    if (!options.version || options.signal?.aborted) throw err
     logger.warn('[OPGG] 版本 %s 请求失败，回退到 OP.GG 最新版本:', options.version, err)
     return opggApi.getChampion({ ...options, region: 'global', version: undefined })
   }
@@ -1738,6 +1758,8 @@ function getSummaryLines(champion: OpggChampion): string[] {
 }
 
 function closePanel() {
+  panelOpenToken++
+  cancelAnimationFrame(panelOutsideFrame); panelOutsideFrame = 0
   panelLayoutCleanup?.()
   panelLayoutCleanup = null
   if (panelReactRoot) {
@@ -1754,6 +1776,10 @@ function closePanel() {
 
 function closeInGameBuildRecommendationModal() {
   if (!inGameModalRoot) return
+  // Invalidate pending data callbacks before starting the exit animation.
+  inGameModalRenderToken++
+  window.clearTimeout(inGameModalCloseTimer)
+  const closingRoot = inGameModalRoot, closingContainer = inGameModalContainer
 
   const close = () => closeInGameBuildRecommendationModal()
   inGameModalRoot.render(
@@ -1767,19 +1793,22 @@ function closeInGameBuildRecommendationModal() {
     }),
   )
 
-  window.setTimeout(() => {
-    if (inGameModalRoot) {
-      inGameModalRoot.unmount()
+  inGameModalCloseTimer = window.setTimeout(() => {
+    inGameModalCloseTimer = 0
+    if (inGameModalRoot === closingRoot) {
+      closingRoot.unmount()
       inGameModalRoot = null
     }
-    if (inGameModalContainer) {
-      inGameModalContainer.remove()
+    if (inGameModalContainer === closingContainer) {
+      closingContainer?.remove()
       inGameModalContainer = null
     }
   }, 240)
 }
 
 function cleanupInGameBuildRecommendationModal() {
+  inGameModalRenderToken++
+  window.clearTimeout(inGameModalCloseTimer); inGameModalCloseTimer = 0
   if (inGameModalRoot) {
     inGameModalRoot.unmount()
     inGameModalRoot = null
@@ -1795,6 +1824,8 @@ function renderInGameBuildRecommendationModal(
   cacheEntry: RecommendationCacheEntry | null,
   token: number,
 ) {
+  if (token !== inGameModalRenderToken) return
+  window.clearTimeout(inGameModalCloseTimer); inGameModalCloseTimer = 0
   if (!inGameModalContainer) {
     inGameModalContainer = document.createElement('div')
     inGameModalContainer.id = 'sona-opgg-ingame-modal-root'
@@ -1813,7 +1844,6 @@ function renderInGameBuildRecommendationModal(
     const nextEntry = ensureRecommendationPrefetch(context)
     const nextToken = ++inGameModalRenderToken
     renderInGameBuildRecommendationModal(context, nextEntry, nextToken)
-    scheduleInGameModalRefresh(context, nextEntry, nextToken)
   }
   const handlePositionChange = (position: OpggPosition) => {
     const nextPosition = mapAssignedPosition(position)
@@ -1825,7 +1855,6 @@ function renderInGameBuildRecommendationModal(
     if (nextEntry && currentChampionLocked) syncRecommendedItemSetWhenReady(nextEntry)
     const nextToken = ++inGameModalRenderToken
     renderInGameBuildRecommendationModal(nextContext, nextEntry, nextToken)
-    scheduleInGameModalRefresh(nextContext, nextEntry, nextToken)
   }
 
   inGameModalRoot!.render(
@@ -1907,14 +1936,16 @@ async function resolveInGameRecommendationContext(): Promise<RecommendationConte
 }
 
 export async function showOpggBuildRecommendationModal() {
+  const token = ++inGameModalRenderToken
   const context = await resolveInGameRecommendationContext()
+  if (token !== inGameModalRenderToken) return
   currentContext = { ...context }
   const cacheEntry = ensureRecommendationPrefetch(context)
-  const token = ++inGameModalRenderToken
   renderInGameBuildRecommendationModal(context, cacheEntry, token)
 }
 
 async function openRecommendationPanel(anchor: HTMLElement, contextOverride?: RecommendationContext) {
+  const openToken = ++panelOpenToken
   if (contextOverride) {
     currentContext = { ...contextOverride }
   } else if (currentContext.championId <= 0) {
@@ -1923,6 +1954,7 @@ async function openRecommendationPanel(anchor: HTMLElement, contextOverride?: Re
     void refreshContext()
   }
 
+  if (openToken !== panelOpenToken || !anchor.isConnected) return
   const context = contextOverride ? { ...contextOverride } : { ...currentContext }
   const cacheEntry = ensureRecommendationPrefetch(context)
   const recommendation = cacheEntry?.data ?? null
@@ -2032,7 +2064,8 @@ async function openRecommendationPanel(anchor: HTMLElement, contextOverride?: Re
       closePanel()
     }
   }
-  requestAnimationFrame(() => {
+  panelOutsideFrame = requestAnimationFrame(() => {
+    panelOutsideFrame = 0
     if (outsideCloseHandler) document.addEventListener('mousedown', outsideCloseHandler, true)
   })
 

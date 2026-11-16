@@ -1,9 +1,15 @@
 import { deadline } from '@/lib/history-api'
 import type { SgpGameSummaryJsonLol } from '@/types/sgp'
+import { historyRequests } from './shared-requests'
 
 export interface ReplayMetadata {
   state: string
   downloadProgress?: number
+}
+
+/** Visible-row probes share short-lived reads; explicit download/play actions always read fresh. */
+export function probeReplayMetadata(gameId: number, signal: AbortSignal) {
+  return historyRequests.run(`replay:${gameId}`, (sharedSignal) => readReplayMetadata(gameId, sharedSignal), { signal, ttlMs: 15000 })
 }
 
 export async function readReplayMetadata(gameId: number, parent?: AbortSignal): Promise<ReplayMetadata | null> {

@@ -48,6 +48,7 @@ export function TooltipBubble({ anchor, id, title, subtitle, description, icon, 
   useLayoutEffect(() => {
     const tooltip = tooltipRef.current
     if (!tooltip) return
+    let frame = 0
     function positionTooltip() {
       const box = anchor.getBoundingClientRect()
       const margin = 10
@@ -58,11 +59,13 @@ export function TooltipBubble({ anchor, id, title, subtitle, description, icon, 
       tooltip!.style.visibility = anchor.isConnected && box.bottom > 0 && box.top < window.innerHeight ? 'visible' : 'hidden'
     }
     positionTooltip()
-    window.addEventListener('scroll', positionTooltip, true)
-    window.addEventListener('resize', positionTooltip)
+    const schedule = () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; positionTooltip() }) }
+    window.addEventListener('scroll', schedule, { capture: true, passive: true })
+    window.addEventListener('resize', schedule)
     return () => {
-      window.removeEventListener('scroll', positionTooltip, true)
-      window.removeEventListener('resize', positionTooltip)
+      cancelAnimationFrame(frame)
+      window.removeEventListener('scroll', schedule, true)
+      window.removeEventListener('resize', schedule)
     }
   }, [anchor, title, subtitle, description, icon, stats, footer, compact])
   return createPortal(<div ref={tooltipRef} id={id} role="tooltip" className={`rh-asset-tooltip${compact ? ' rh-identity-tooltip' : ''}`}>

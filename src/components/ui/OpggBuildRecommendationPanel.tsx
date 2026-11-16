@@ -1,4 +1,4 @@
-import { createContext, useContext, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { createContext, useContext, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { HistoryAssetTooltip } from './HistoryAssetTooltip'
 import { SonaSelect } from '@/components/ui/SonaSelect'
@@ -395,13 +395,16 @@ function Section({ title, children, empty = false, emptyText, count, toolbar }: 
   const large=(count ?? 0)>8
   const closed=collapsible && mode==='hidden'
   const limit=large && mode!=='all' ? 8 : Infinity
+  // Height observations must not rebuild every item, tooltip and image in this section.
+  const body=useMemo(()=><div className="sobp-section-card">{toolbar}{empty?<div className="sobp-empty">{emptyText??t('common.noData')}</div>:typeof children==='function'?children(limit):children}</div>,[toolbar,empty,emptyText,t,children,limit])
   useLayoutEffect(()=>{
-    if (!collapsible || !content.current) return
+    if (!collapsible || closed || !content.current) return
     const node=content.current
-    const measure=()=>{const next=node.getBoundingClientRect().height;setHeight((old)=>old!=null&&Math.abs(old-next)<.5?old:next)}
-    const observer=new ResizeObserver(measure);observer.observe(node);measure()
+    const update=(next:number)=>setHeight((old)=>old!=null&&Math.abs(old-next)<.5?old:next)
+    const observer=new ResizeObserver(([entry])=>update(entry.borderBoxSize?.[0]?.blockSize??entry.contentRect.height))
+    observer.observe(node);update(node.getBoundingClientRect().height)
     return ()=>observer.disconnect()
-  },[collapsible])
+  },[collapsible,closed])
   const action=(label:string,onClick:()=>void,path:string)=> <HistoryAssetTooltip title={label} compact asChild>
     <button type="button" className="sobp-fold-button" aria-label={`${title}：${label}`} aria-expanded={label==='收起'?true:label==='展开'?false:undefined} onClick={onClick}><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d={path}/></svg></button>
   </HistoryAssetTooltip>
@@ -414,7 +417,7 @@ function Section({ title, children, empty = false, emptyText, count, toolbar }: 
     </h3>
     <div className="sobp-section-reveal" style={collapsible?{height:closed?0:height??'auto'}:undefined} aria-hidden={closed || undefined} inert={closed || undefined}>
       <div ref={content}>
-        <div className="sobp-section-card">{toolbar}{empty?<div className="sobp-empty">{emptyText??t('common.noData')}</div>:typeof children==='function'?children(limit):children}</div>
+        {body}
       </div>
     </div>
   </section>
@@ -658,9 +661,9 @@ function RuneSection({ title, runes, championName, modeLabel }: { title: string;
 
 function AugmentSection({ title, groups }: { title: string; groups?: BuildRecommendation['augments'] }) {
   const [rarity, setRarity] = useState(0)
-  const entries = [...new Map((groups ?? []).flatMap((group) => group.items.map((item) => ({...item, rarity: group.rarity, rarityLabel: group.label ?? getAugmentRarityLabel(group.rarity)}))).map((item) => [item.id,item])).values()]
-    .filter((item) => !rarity || item.rarity === rarity)
-    .sort((a,b) => (Number.isFinite(b.winRate) ? b.winRate! : -1) - (Number.isFinite(a.winRate) ? a.winRate! : -1) || b.pickRate-a.pickRate || a.id-b.id)
+  const sorted=useMemo(()=>[...new Map((groups ?? []).flatMap((group) => group.items.map((item) => ({...item, rarity: group.rarity, rarityLabel: group.label ?? getAugmentRarityLabel(group.rarity)}))).map((item) => [item.id,item])).values()]
+    .sort((a,b) => (Number.isFinite(b.winRate) ? b.winRate! : -1) - (Number.isFinite(a.winRate) ? a.winRate! : -1) || b.pickRate-a.pickRate || a.id-b.id),[groups])
+  const entries=useMemo(()=>rarity?sorted.filter((item)=>item.rarity===rarity):sorted,[sorted,rarity])
   const toolbar=<div className="sobp-augment-filters" role="group" aria-label="海克斯类型">
     {[[0,'全部'],[8,'棱彩'],[4,'黄金'],[1,'白银']].map(([value,label])=><button type="button" key={value} aria-pressed={rarity===value} onClick={()=>setRarity(Number(value))}>{label}</button>)}
     <small>{entries.length} 个 · 胜率排序</small>

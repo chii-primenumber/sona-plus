@@ -1,3 +1,5 @@
+import { SharedRequests } from './shared-requests'
+
 export interface AramggRequestOptions {
   signal?: AbortSignal
   timeoutMs?: number
@@ -277,6 +279,8 @@ export class AramggDataApi {
 
   private championsStatsCache: AramggChampionsStats | null = null
   private championsStatsPromise: Promise<AramggChampionsStats> | null = null
+  private championsStatsExpires = 0
+  private catalogs = new SharedRequests(2, 4, 15000)
 
   /**
    * 全英雄海克斯大乱斗 T 级/胜率榜。默认请求会缓存到当前客户端进程内，
@@ -284,7 +288,7 @@ export class AramggDataApi {
    */
   getChampionsStats(options: AramggRequestOptions = {}): Promise<AramggChampionsStats> {
     const cacheable = options.signal == null
-    if (cacheable && this.championsStatsCache) return Promise.resolve(this.championsStatsCache)
+    if (cacheable && this.championsStatsCache && this.championsStatsExpires > Date.now()) return Promise.resolve(this.championsStatsCache)
     if (cacheable && this.championsStatsPromise) return this.championsStatsPromise
 
     const promise = this.request<AramggChampionsStats>('/data/champions-stats.json', options)
@@ -298,6 +302,7 @@ export class AramggDataApi {
 
         if (cacheable) {
           this.championsStatsCache = data
+          this.championsStatsExpires = Date.now() + 10 * 60 * 1000
           this.championsStatsPromise = null
         }
         return data
@@ -317,7 +322,7 @@ export class AramggDataApi {
   }
 
   getMayhemAugmentsZhCn(options: AramggRequestOptions = {}): Promise<AramggMayhemAugments> {
-    return this.request('/data/aram-mayhem-augments.zh_cn.json', options)
+    return this.catalogs.run('mayhem-zh-cn', (signal) => this.request('/data/aram-mayhem-augments.zh_cn.json', { ...options, signal }), { signal: options.signal, ttlMs: 10 * 60 * 1000 })
   }
 
   getAugmentsStatsRaw(options: AramggRequestOptions = {}): Promise<AramggAugmentStatsRaw> {
@@ -368,6 +373,7 @@ export class AramggDataApi {
   }
 
   private async request<T>(path: string, options: AramggRequestOptions = {}, asText = false): Promise<T> {
+    if (options.signal?.aborted) throw new DOMException('查询已取消', 'AbortError')
     const url = new URL(path, AramggDataApi.BASE_URL)
     const controller = new AbortController()
     const timeoutMs = options.timeoutMs ?? AramggDataApi.DEFAULT_TIMEOUT_MS

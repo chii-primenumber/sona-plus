@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { deadline } from '@/lib/history-api'
 import { lcu } from '@/lib/lcu'
-import { prepareReplayMetadata, readReplayMetadata, requestReplay } from '@/lib/replay'
+import { prepareReplayMetadata, probeReplayMetadata, readReplayMetadata, requestReplay } from '@/lib/replay'
 import type { SgpGameSummaryJsonLol } from '@/types/sgp'
 import { HistoryAssetTooltip } from './HistoryAssetTooltip'
 import { RefreshIcon, ReplayDownloadIcon, ReplayPlayIcon } from './icons'
@@ -23,7 +23,7 @@ export function HistoryReplayButton({ game }: { game: SgpGameSummaryJsonLol }) {
       if (!entries.some((entry) => entry.isIntersecting)) return
       observer.disconnect()
       if (controller.signal.aborted || active.current) return
-      void readReplayMetadata(game.gameId, controller.signal).then((metadata) => {
+      void probeReplayMetadata(game.gameId, controller.signal).then((metadata) => {
         if (!controller.signal.aborted && metadata?.state === 'watch') setReady(true)
       }).catch(() => {})
     })

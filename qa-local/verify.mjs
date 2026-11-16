@@ -3,7 +3,10 @@ import { createRequire } from 'node:module'
 import assert from 'node:assert/strict'
 import path from 'node:path'
 import fs from 'node:fs/promises'
+import { execFileSync } from 'node:child_process'
 import { verifyUiOptimizations } from './verify-ui-optimizations.mjs'
+import { verifyRecommendationLifecycle } from './verify-recommendation-lifecycle.mjs'
+import { installPerformanceProbe, measurePerformance } from './measure-performance.mjs'
 
 const require = createRequire(import.meta.url)
 const { chromium } = require(process.env.SONA_PLAYWRIGHT_PATH || 'playwright')
@@ -64,8 +67,23 @@ bp.actions = [[{actorCellId:0,type:'pick',championId:157,completed:false,isInPro
 const game = { phase:'InProgress', map:{id:11,name:'召唤师峡谷'}, gameData:{ gameId:9828375, queue:queues[0], playerChampionSelections:ids.map((puuid,i)=>({puuid,championId:champions[i][0]})),teamOne:ids.slice(0,5).map((puuid,i)=>({puuid,championId:champions[i][0],teamParticipantId:i<2?1:0,selectedPosition:positions[i].toLowerCase()})), teamTwo:ids.slice(5).map((puuid,i)=>({puuid,championId:champions[i+5][0],teamParticipantId:0,selectedPosition:positions[i].toLowerCase()})) } }
 const items = [[2003,'生命药水'],[3158,'明朗之靴'],[6617,'月石再生器'],[3504,'炽热香炉'],[6621,'黎明核心'],[3089,'灭世者的死亡之帽'],[3020,'法师之靴'],[3364,'神谕透镜']]
 const mockIcons = (array, type) => array.map(([id,name]) => ({id,name,iconPath:`/qa-art/${type}-${id}.svg`,description:`${name} · 离线演示图标`}))
-const version = JSON.parse(await fs.readFile(path.join(base, 'package.json'), 'utf8')).version
-const server = await createServer({ root:base, configFile:false, resolve:{alias:{'@':path.join(base,'src')}},define:{__PLUGIN_VERSION__:JSON.stringify(version)},server:{host:'127.0.0.1',port:0,open:false,strictPort:true},publicDir:false })
+const baselineCommit = process.env.SONA_PERF_BASELINE
+const version = baselineCommit ? JSON.parse(execFileSync('git', ['show', `${baselineCommit}:package.json`], {cwd:base,encoding:'utf8'})).version : JSON.parse(await fs.readFile(path.join(base, 'package.json'), 'utf8')).version
+const perfSource = {
+  name:'sona-performance-instrumentation', enforce:'pre',
+  load(id) {
+    if (!baselineCommit) return
+    const relative = path.relative(base, id.split('?')[0]).replaceAll('\\','/')
+    if (relative.startsWith('src/') && /\.(tsx?|css)$/.test(relative)) return execFileSync('git',['show',`${baselineCommit}:${relative}`],{cwd:base,encoding:'utf8',maxBuffer:8*1024*1024})
+  },
+  transform(code, id) {
+    if (!process.env.SONA_PERF_OUTPUT) return
+    const counter = (name) => `window.sonaPerf && (window.sonaPerf.renderCalls.${name} = (window.sonaPerf.renderCalls.${name} || 0) + 1);\n`
+    if (id.endsWith('/src/components/ui/HistoryWidgets.tsx')) return code.replace('  const [localExpanded, setLocalExpanded]',counter('HistoryMatchCard')+'  const [localExpanded, setLocalExpanded]')
+    if (id.endsWith('/src/components/ui/TeamHistoryModal.tsx')) return code.replace('  const [profile, setProfile]',counter('TeamPlayerCard')+'  const [profile, setProfile]')
+  },
+}
+const server = await createServer({ root:base, configFile:false, plugins:[perfSource], resolve:{alias:{'@':path.join(base,'src')}},define:{__PLUGIN_VERSION__:JSON.stringify(version)},server:{host:'127.0.0.1',port:0,open:false,strictPort:true},publicDir:false })
 await server.listen()
 const origin = `http://127.0.0.1:${server.httpServer.address().port}`
 let browser
@@ -92,6 +110,7 @@ try {
   const context = await browser.newContext({ viewport:{width:1450,height:940}, reducedMotion:'reduce' })
   await context.grantPermissions(['clipboard-read','clipboard-write'])
   const page = await context.newPage()
+  if (process.env.SONA_PERF_OUTPUT) await page.addInitScript(installPerformanceProbe)
   page.on('pageerror',(error)=>errors.push(error.message))
   await page.route('**/*', async (route) => {
     const url = new URL(route.request().url()), p = url.pathname, method = route.request().method()
@@ -234,6 +253,11 @@ try {
     return route.continue()
   })
   await page.goto(`${origin}/qa-local/index.html`)
+  if (process.env.SONA_LIFECYCLE_ONLY) {
+    await verifyRecommendationLifecycle(page)
+  } else if (process.env.SONA_PERF_OUTPUT) {
+    await measurePerformance({page, context, origin, version, output:process.env.SONA_PERF_OUTPUT, counts, errors, setLongHistory(value) { longHistory=value }})
+  } else {
   await verifyUiOptimizations(page)
   const privacySwitch = page.locator('.sona-setting-card').filter({hasText:'解锁隐藏生涯'}).getByRole('switch')
   await privacySwitch.waitFor()
@@ -1294,9 +1318,11 @@ try {
   await mayhemPanel.evaluate((node)=>{node.style.cssText='position:fixed;inset:12px;z-index:2147483647;background:#111;height:calc(100vh - 24px)'})
   await mayhemPanel.screenshot({path:path.join(out,'海斗紧凑海克斯筛选_模拟数据.png')})
   await page.evaluate(()=>{window.qaMayhemRoot.unmount();document.getElementById('qa-mayhem-recommendations').remove()})
+  await verifyRecommendationLifecycle(page)
   assert.equal(errors.length,0,errors.join('\n'))
   assert.equal(writes.length,0,writes.join('\n'))
   console.log(JSON.stringify({result:'passed', checks:['current, peak and previous ranks', 'split, copyable and hover-only Riot IDs', 'single-button replay download and playback', 'icon-only report expansion', 'segmented bars and missing breakdown', 'equipment and Mayhem tooltips', 'display settings for team, personal and report', 'shared and persisted plugin theme', 'name, Riot ID and PUUID search', 'friends, visits and region reference', 'cross-region profile, ranks and matches', 'native locked enemy row with nonstandard portrait path', 'ranked and custom draft gating', 'Korean lane/tier queries and no-data state', 'champion filter toggle and damage badge', 'personal history', 'player search and return', 'encounter profile icons', 'filters and pagination', 'native fallback', 'BP party colors and game ten', 'recent match detail', 'transparent nested scrollbars', 'nested Escape', 'phase exit', '1000px layout', 'native search clearance and exclusive profile entry', 'history and postgame context menus', 'navigation preserves filters, pagination, expansion and scroll without refetch', 'champion sorting and minimum samples', 'variable-height virtual history', 'batched and scoped native scans', 'visible-layer particles and hidden-page pause', 'persisted effects switch', 'no unexpected writes or page errors'], requests:counts.length, blockedUnrelatedExternal:[...new Set(external)]},null,2))
+  }
 } finally {
   await browser?.close()
   await server.close()

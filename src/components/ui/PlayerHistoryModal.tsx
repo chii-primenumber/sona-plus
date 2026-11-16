@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Modal } from './Modal'
 import { HistoryDisplaySettings } from './HistoryDisplaySettings'
 import { HistoryTrendPanel } from './HistoryTrendPanel'
@@ -36,10 +36,10 @@ export function PlayerHistoryModal({ open, onClose, puuid, playerName, queueId }
   const [navigation, setNavigation] = useState<{ base: string; current: HistoryPlayer; trail: HistoryPlayer[] }>({ base: puuid, current: { puuid, name: playerName }, trail: [] })
   useEffect(() => { if (open) setNavigation({ base: puuid, current: { puuid, name: playerName }, trail: [] }) }, [open, puuid, playerName])
   const current = navigation.base === puuid ? navigation.current : { puuid, name: playerName }
-  const inspect = (player: HistoryPlayer) => {
+  const inspect = useCallback((player: HistoryPlayer) => {
     if (!player.puuid || (player.puuid === current.puuid && player.serverId === current.serverId)) return
     setNavigation((nav) => ({ ...nav, current: player, trail: [...nav.trail, nav.current].slice(-20) }))
-  }
+  }, [current.puuid, current.serverId])
   const viewKey = `${getHistoryEpoch()}:${current.serverId ?? ''}:${current.puuid}`
   return <Modal open={open} onClose={onClose} width="min(1320px, 95vw)" height="min(940px, 92vh)">
     {current.puuid && <PlayerHistoryContent key={viewKey} open={open} target={current}
@@ -112,7 +112,10 @@ function PlayerHistoryContent({ open, target, defaultQueueId, onSelectPlayer, on
     else { setShowSettings(false); setShowSearch(false) }
   }, [open, target])
 
-  const onInspect = (puuid: string, name: string) => onSelectPlayer({ puuid, name, serverId: target.serverId })
+  const onInspect = useCallback((puuid: string, name: string) => onSelectPlayer({ puuid, name, serverId: target.serverId }), [onSelectPlayer, target.serverId])
+  const changeExpanded = useCallback((id: string, value: boolean) => setExpanded((previous) => {
+    const next = new Set(previous); if (value) next.add(id); else next.delete(id); return next
+  }), [])
 
   useEffect(() => {
     if (!open) return
@@ -254,7 +257,7 @@ function PlayerHistoryContent({ open, target, defaultQueueId, onSelectPlayer, on
         {pages.scanLimit && <div className="rh-notice">当前范围为最近 {pages.scanLimit} 场。</div>}
         {pages.error && <div className="rh-error" role="alert">{pages.error}<button type="button" onClick={allMatches.length && pages.hasMore ? () => void pages.loadMore() : refresh}>重试</button></div>}
         <div className="rh-content rh-scroll-area" ref={contentRef}>
-          {pages.loading ? <div className="rh-empty"><span className="rh-spinner" />正在加载战绩…<span className="rh-kaomoji" aria-hidden="true">(｡･ω･｡)</span></div> : !filtered.length ? <div className="rh-empty"><span>{allMatches.length ? '当前筛选下没有已加载对局。可重置筛选或继续加载。' : pages.error ? '战绩查询未完成，请重试。' : '当前查询范围没有对局记录。'}</span>{!pages.error && <span className="rh-kaomoji" aria-hidden="true">(・ω・)</span>}</div> : tab === 'matches' ? <HistoryMatchList matches={filtered} hidden={hidden} onInspect={onInspect} scrollRef={contentRef} expanded={expanded} onExpandedChange={(id, value) => setExpanded((previous) => { const next = new Set(previous); if (value) next.add(id); else next.delete(id); return next })} /> : tab === 'trend' ? <HistoryTrendPanel matches={filtered} games={filteredGames} puuid={target.puuid} system={scoreSystem} score={strength} /> : <div className="rh-champion-results"><div className="rh-champion-controls">
+          {pages.loading ? <div className="rh-empty"><span className="rh-spinner" />正在加载战绩…<span className="rh-kaomoji" aria-hidden="true">(｡･ω･｡)</span></div> : !filtered.length ? <div className="rh-empty"><span>{allMatches.length ? '当前筛选下没有已加载对局。可重置筛选或继续加载。' : pages.error ? '战绩查询未完成，请重试。' : '当前查询范围没有对局记录。'}</span>{!pages.error && <span className="rh-kaomoji" aria-hidden="true">(・ω・)</span>}</div> : tab === 'matches' ? <HistoryMatchList matches={filtered} hidden={hidden} onInspect={onInspect} scrollRef={contentRef} expanded={expanded} onExpandedChange={changeExpanded} /> : tab === 'trend' ? <HistoryTrendPanel matches={filtered} games={filteredGames} puuid={target.puuid} system={scoreSystem} score={strength} /> : <div className="rh-champion-results"><div className="rh-champion-controls">
             <label>排序<select aria-label="英雄统计排序" value={championSort} onChange={(event) => setChampionSort(event.target.value)}>
               {[['total','场次'],['winRate','胜率'],['kda','KDA'],['participation','参团率'],['damageShare','伤害占比'],['takenShare','承伤占比'],['csPerMinute','补刀 / 分']].map(([key,label]) => <option key={key} value={key}>{label} ↓</option>)}
             </select></label>
