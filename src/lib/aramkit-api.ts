@@ -1,6 +1,7 @@
 import { SharedRequests } from './shared-requests'
 import { deadline } from './history-api'
-import type { BuildRecommendation, RecommendationAssets, RecommendationItemGroup } from '@/components/ui/OpggBuildRecommendationPanel'
+import { sortRecommendationBuilds } from './recommendation-rates'
+import type { BuildRecommendation, RecommendationAssets } from '@/components/ui/OpggBuildRecommendationPanel'
 import type { OpggItemBuild } from './opgg-api'
 
 export const ARAMKIT_BASE = 'https://data.aramkit.cn'
@@ -16,9 +17,9 @@ export interface AramKitDetail {
   summoners?: Array<Stats & { spells: Array<{ id: number }> }>
   augments: { all: Array<Stats & { id: number }> }
   items: { unfiltered: { all: Array<Stats & { id: number }> } }
-  builds: { unfiltered: { archetypes: Archetype[] } }
+  builds: { unfiltered: { sampleCount?: number; archetypes: Archetype[] } }
 }
-export interface AramKitResources { items: Record<string, Resource>; augments: Record<string, Resource>; archetypes: Record<string, { name?: string }> }
+export interface AramKitResources { items: Record<string, Resource>; augments: Record<string, Resource>; archetypes?: Record<string, { name?: string }> }
 
 function rate(value: unknown): number | null { return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1 ? value : null }
 function ids(items: Array<{ id: number }> | undefined) { return (items ?? []).map((item) => Number(item.id)).filter((id) => Number.isSafeInteger(id) && id > 0) }
@@ -55,22 +56,31 @@ export function parseAramKitRecommendation(detail: AramKitDetail, resources: Ara
   const allRows = detail.items.unfiltered.all.filter((row) => row.id > 0)
   const allItems = completed(allRows.map((row) => ({ ...row, item: { id: row.id } })), baseline)
   const allBoots = allRows.filter((row) => itemInfo(row.id).isBoots).map((row) => build([row.id], row, baseline))
-  const groups: RecommendationItemGroup[] = detail.builds.unfiltered.archetypes.map((archetype) => {
-    const profiles = archetype.profiles.filter((profile) => ids(profile.itemSet).length === 3 && new Set(ids(profile.itemSet)).size === 3)
-    const coreItems = profiles.map((profile) => build(ids(profile.itemSet), profile, baseline))
-    return {
-      id: archetype.key, label: resources.archetypes[archetype.key]?.name || archetype.key, baselineWinRate: rate(archetype.winRate), coreItems,
-      lastItems: allItems, boots: allBoots,
-      profiles: profiles.map((profile, index) => ({
-        id: String(index), label: `#${index + 1} ${ids(profile.itemSet).map((id) => itemInfo(id).name).join(' + ')}`,
-        routes: (profile.routes ?? []).filter((route) => ids(route.purchaseOrder).length === 3).map((route, routeIndex) => ({
-          id: String(routeIndex), label: ids(route.purchaseOrder).map((id) => itemInfo(id).name).join(' → '), baselineWinRate: rate(route.winRate),
-          lastItems: completed(route.laterItems ?? [], rate(route.winRate)),
-          boots: (route.boots ?? []).filter((row) => row.item?.id > 0 && itemInfo(row.item.id).isBoots).map((row) => build([row.item.id], row, rate(route.winRate))),
-        })),
-      })),
-    }
-  }).filter((group) => group.coreItems.length)
+  // Rebase core selection rates to the complete core-build population before pooling.
+  const coreTotal = detail.builds.unfiltered.sampleCount
+  const coreRows = new Map<string, { itemIds: number[]; rows: Array<Stats & { globalPick: number | null }> }>()
+  for (const archetype of detail.builds.unfiltered.archetypes) for (const profile of archetype.profiles) {
+    const itemIds = ids(profile.itemSet)
+    if (itemIds.length !== 3 || new Set(itemIds).size !== 3) continue
+    const count = profile.sampleCount
+    const globalPick = typeof coreTotal === 'number' && coreTotal > 0 && typeof count === 'number' && count >= 0
+      ? rate(count / coreTotal)
+      : rate(archetype.pickRate) != null && rate(profile.pickRate) != null ? archetype.pickRate! * profile.pickRate! : null
+    const key = [...itemIds].sort((a,b)=>a-b).join(',')
+    const entry = coreRows.get(key) ?? { itemIds, rows: [] }
+    entry.rows.push({ ...profile, globalPick }); coreRows.set(key, entry)
+  }
+  const cores = [...coreRows.values()].map(({ itemIds, rows }) => {
+    const countsKnown = rows.every((row)=>typeof row.sampleCount==='number' && Number.isFinite(row.sampleCount) && row.sampleCount>=0)
+    const count = countsKnown ? rows.reduce((sum,row)=>sum+row.sampleCount!,0) : NaN
+    const winsKnown = rows.every((row)=>rate(row.winRate)!=null)
+    const winRate = rows.length===1 ? rate(rows[0].winRate) : winsKnown && count>0
+      ? rows.reduce((sum,row)=>sum+row.winRate!*row.sampleCount!,0)/count : null
+    const pickRate = typeof coreTotal==='number' && coreTotal>0 && countsKnown ? rate(count/coreTotal)
+      : rows.every((row)=>row.globalPick!=null) ? rate(rows.reduce((sum,row)=>sum+row.globalPick!,0)) : null
+    return build(itemIds, { sampleCount:count,winRate:winRate??undefined,pickRate:pickRate??undefined }, baseline)
+  })
+  const coreItems = sortRecommendationBuilds(cores,'pick')
   const augments = new Map<number, Array<{ id: number; pickRate: number; winRate?: number }>>()
   for (const row of detail.augments.all) {
     const resource = resources.augments[String(row.id)]
@@ -80,17 +90,16 @@ export function parseAramKitRecommendation(detail: AramKitDetail, resources: Ara
     const list = augments.get(rarity) ?? []
     list.push({ id: row.id, pickRate: rate(row.pickRate) ?? NaN, winRate: rate(row.winRate) ?? undefined }); augments.set(rarity, list)
   }
-  const first = groups[0], firstRoute = first?.profiles?.[0]?.routes[0]
   const percent = (value: number | null) => value == null ? '—' : `${(value * 100).toFixed(1)}%`
   return {
     mode: 'aram', modeLabel: '海克斯大乱斗', position: 'none', version: version.version,
     sourceLabel: `ARAMKit · ${version.version} · 全分段 · 原始数据`, assets, baselineWinRate: baseline,
     summary: [`总体胜率 ${percent(baseline)}`, `登场 ${percent(rate(detail.champion.stats?.pickRate))}`, `Tier ${detail.champion.tier || '—'}`],
     summonerSpells: (detail.summoners ?? []).filter((row) => ids(row.spells).length === 2).map((row) => ({ ids: ids(row.spells), win: NaN, play: row.sampleCount ?? NaN, winRate: rate(row.winRate), pick_rate: rate(row.pickRate) ?? NaN, baselineWinRate: baseline })),
-    starterItems: [], boots: firstRoute?.boots ?? allBoots, coreItems: first?.coreItems ?? [], lastItems: firstRoute?.lastItems ?? allItems, itemGroups: groups,
+    starterItems: [], boots: sortRecommendationBuilds(allBoots,'pick'), coreItems, lastItems: sortRecommendationBuilds(allItems,'pick'),
     prismItems: [], runePages: [], matchups: [], augments: [...augments].map(([rarity, items]) => ({ rarity, items })),
     meta: { rank: detail.champion.rank ?? null, previousRank: null, rankDelta: null, totalRank: null, matchCount: detail.champion.stats?.sampleCount ?? null, version: version.version, updatedAt: version.dataDate ?? '' },
-    warning: groups.length ? undefined : 'ARAMKit 暂无该英雄的海斗核心组合数据。',
+    warning: coreItems.length ? undefined : 'ARAMKit 暂无该英雄的海斗核心组合数据。',
   }
 }
 
@@ -109,13 +118,12 @@ export class AramKitDataApi {
     const rows = Array.isArray(manifest.versions) ? manifest.versions : []
     const version = rows.find((row) => row.version === patch) ?? rows.find((row) => row.version === manifest.latest)
     if (!version || !/^data\/[\w.-]+$/.test(version.dataPath) || !/^resources\/[\w.-]+$/.test(version.resourcePath) || version.dataPath.includes('..') || version.resourcePath.includes('..')) throw new Error('ARAMKit 版本索引无效。')
-    const [detail, items, augments, archetypes] = await Promise.all([
+    const [detail, items, augments] = await Promise.all([
       this.read<AramKitDetail>(`${version.dataPath}/stats/all/champion-details/${championId}.json`, signal),
       this.read<Record<string, Resource>>(`${version.resourcePath}/zh-CN/resources/items.json`, signal, 600000),
       this.read<Record<string, Resource>>(`${version.resourcePath}/zh-CN/resources/augments.json`, signal, 600000),
-      this.read<Record<string, { name?: string }>>(`${version.resourcePath}/zh-CN/resources/archetypes.json`, signal, 600000),
     ])
-    return parseAramKitRecommendation(detail, { items, augments, archetypes }, version, championId)
+    return parseAramKitRecommendation(detail, { items, augments }, version, championId)
   }
 }
 export const aramkitApi = new AramKitDataApi()
