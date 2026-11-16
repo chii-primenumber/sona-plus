@@ -987,6 +987,11 @@ try {
   assert.equal(await coreRows.nth(0).locator('.sobp-icon-step').count(),3)
   await buildPanel.getByText('三件套推荐',{exact:true}).waitFor()
   await buildPanel.getByText('后续成装推荐',{exact:true}).waitFor()
+  const sectionOrder=await buildPanel.evaluate((node)=>[...node.querySelectorAll('.sobp-section-title')].map((title)=>title.textContent.trim()))
+  assert.ok(sectionOrder.indexOf('三件套推荐')>sectionOrder.indexOf('召唤师技能'))
+  assert.ok(sectionOrder.indexOf('后续成装推荐')>sectionOrder.indexOf('三件套推荐'))
+  assert.equal(await coreRows.first().evaluate((node)=>getComputedStyle(node.parentElement).display),'flex')
+
   assert.equal(await coreRows.nth(0).locator('.sobp-pick-rate strong').textContent(),'31.3%')
   assert.equal(await coreRows.nth(0).locator('.sobp-win-rate strong').textContent(),'60.0%')
   assert.equal(await coreRows.nth(1).locator('.sobp-win-rate strong').textContent(),'0.0%')

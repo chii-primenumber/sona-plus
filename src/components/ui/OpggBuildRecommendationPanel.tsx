@@ -168,10 +168,10 @@ export function OpggBuildRecommendationPanel({
         ) : (
           <>
             <div className="sobp-grid">
-              <div className="sobp-core-builds" data-testid="three-item-builds"><ItemSection title="三件套推荐" builds={recommendation?.coreItems?.filter((build) => build.ids.length === 3 && build.ids.every((id) => Number.isInteger(id) && id > 0) && new Set(build.ids).size === 3)} itemLimit={3} /></div>
               <RuneSection title={t('opgg.section.runes')} runes={recommendation?.runePages} championName={championName} modeLabel={recommendation?.modeLabel || queueText} />
               <SpellSection title={t('opgg.section.spells')} builds={recommendation?.summonerSpells} limit={MAX_RECOMMENDATION_ROWS} />
             </div>
+              <div className="sobp-core-builds" data-testid="three-item-builds"><ItemSection title="三件套推荐" builds={recommendation?.coreItems?.filter((build) => build.ids.length === 3 && build.ids.every((id) => Number.isInteger(id) && id > 0) && new Set(build.ids).size === 3)} itemLimit={3} /></div>
             <div className="sobp-trend-wrap">
               <LastItemTrendSection title="后续成装推荐" builds={recommendation?.lastItems} />
             </div>
@@ -429,10 +429,10 @@ function LastItemTrendSection({ title, builds }: { title: string; builds?: OpggI
   return (
     <Section title={title} empty={visibleItems.length === 0}>
       <div className="sobp-last-items">
-        {visibleItems.map((entry) => {
+        {visibleItems.map((entry, index) => {
           const item = getItemInfo(entry.id)
           return (
-            <div className="sobp-last-item" key={entry.key}>
+            <div className="sobp-last-item" key={entry.key}><RankBadge rank={index + 1} />
               <BuildIcon src={item.iconPath} title={item.name} description={item.description} price={item.price} size={34} />
               <RecommendationRates pickRate={entry.pickRate} winRate={entry.winRate} maxRate={1} />
             </div>

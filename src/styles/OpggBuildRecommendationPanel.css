@@ -978,9 +978,32 @@
   .sobp-augment-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
-.sobp-core-builds { grid-column: 1 / -1; min-width: 0; }
-.sobp-core-builds .sobp-row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 20px; align-items: center; }
-.sobp-core-builds .sobp-section-card { display: grid; grid-template-columns: repeat(auto-fit,minmax(290px,1fr)); gap: 0 16px; }
-
-.sobp-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
-.sobp-core-builds .sobp-section-card { grid-template-columns: repeat(auto-fit,minmax(min(100%,290px),1fr)); }
+/* Compact recommendation flow: runes/spells, complete builds, then individual items. */
+.sobp-grid { grid-template-columns: minmax(0,1.4fr) minmax(0,1fr); gap: 10px; }
+.sobp-body { padding: 12px 16px; }
+.sobp-section { min-height: 0; gap: 5px; }
+.sobp-section-card { padding: 6px; gap: 3px; }
+.sobp-row { min-height: 38px; padding: 4px 6px; gap: 6px; }
+.sobp-core-builds { margin-top: 12px; min-width: 0; }
+.sobp-core-builds .sobp-section-card { display: flex; flex-direction: column; gap: 2px; }
+.sobp-core-builds .sobp-row { flex-wrap: nowrap; min-height: 38px; background: transparent; }
+.sobp-core-builds .sobp-recommendation-stats,
+.sobp-last-item .sobp-recommendation-stats { display: flex; align-items: center; gap: 18px; width: 210px; }
+.sobp-core-builds .sobp-stat, .sobp-last-item .sobp-stat { flex: 1; }
+.sobp-core-builds .sobp-stat-track, .sobp-last-item .sobp-stat-track { display: none; }
+.sobp-core-builds .sobp-pick-rate, .sobp-last-item .sobp-pick-rate,
+.sobp-core-builds .sobp-win-rate, .sobp-last-item .sobp-win-rate { gap: 6px; white-space: nowrap; }
+.sobp-core-builds .sobp-win-rate, .sobp-last-item .sobp-win-rate { min-width: 78px; }
+.sobp-last-items { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 4px 18px; }
+.sobp-last-item { display: flex; flex-direction: row; min-width: 0; min-height: 38px; gap: 8px; }
+.sobp-last-item .sobp-recommendation-stats { margin-left: auto; width: auto; flex: 1; justify-content: flex-end; }
+@container (max-width: 900px) {
+  .sobp-grid > :nth-child(2) { grid-column: auto; grid-row: auto; }
+  .sobp-last-items { grid-template-columns: minmax(0,1fr); }
+}
+@container (max-width: 560px) {
+  .sobp-grid { grid-template-columns: minmax(0,1fr); }
+  .sobp-body { padding: 10px; }
+  .sobp-core-builds .sobp-recommendation-stats { width: auto; gap: 8px; }
+  .sobp-core-builds .sobp-pick-rate > span, .sobp-core-builds .sobp-win-rate > span { display: none; }
+}
