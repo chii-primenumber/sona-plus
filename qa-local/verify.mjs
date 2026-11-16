@@ -8,6 +8,7 @@ import { execFileSync } from 'node:child_process'
 import { verifyUiOptimizations } from './verify-ui-optimizations.mjs'
 import { verifyCompareAndTooltip } from './verify-compare-and-tooltip.mjs'
 import { verifyCareerBackground } from './verify-career-background.mjs'
+import { verifyHistoryUi44 } from './verify-history-ui44.mjs'
 import { verifyClientSurfaces } from './verify-client-surfaces.mjs'
 import { verifyHistoryTheme } from './verify-history-theme.mjs'
 import { verifyAugmentSwitch } from './verify-augment-switch.mjs'
@@ -266,7 +267,14 @@ try {
     return route.continue()
   })
   await page.goto(`${origin}/qa-local/index.html`)
-  if (process.env.SONA_TOOLTIPS_ONLY) {
+  if (process.env.SONA_UI44_ONLY) {
+    await verifyRichTooltips(page,out)
+    await page.getByPlaceholder(/名字#Tag/).fill('练习星轨#DEMO')
+    await page.getByRole('button',{name:'查询战绩',exact:true}).click()
+    const profile=page.getByTestId('player-history');await profile.locator('.rh-match').first().waitFor()
+    await verifyHistoryUi44(page,profile,out)
+    assert.equal(errors.length,0,errors.join('\n'))
+  } else if (process.env.SONA_TOOLTIPS_ONLY) {
     await verifyRichTooltips(page,out)
     assert.equal(errors.length,0,errors.join('\n'))
   } else if (process.env.SONA_UI39_ONLY) {
@@ -769,7 +777,7 @@ try {
   assert.equal(counts.length,requestsBeforeBack)
   await profileView.getByRole('button',{name:'重置筛选'}).click()
   await profileView.getByRole('button',{name:/英雄统计/}).click()
-  await selectOption(page,profileView.getByLabel('英雄统计排序'),'winRate')
+  await profileView.getByRole('button',{name:'胜率排序',exact:true}).click()
   const rates=await profileView.locator('.rh-champion-table tbody tr td:nth-child(3)').allTextContents()
   const parsedRates=rates.map((text)=>Number(text.replace('%','')))
   assert.deepEqual(parsedRates,[...parsedRates].sort((a,b)=>b-a))

@@ -116,10 +116,6 @@ export interface SgpParticipantLol {
   champLevel: number
   championId: number
   championName: string
-  /** Optional historical skin fields. Missing values do not identify the skin. */
-  skinId?: number
-  skinIndex?: number
-  skinName?: string
   championTransform: number
   commandPings: number
   consumablesPurchased: number

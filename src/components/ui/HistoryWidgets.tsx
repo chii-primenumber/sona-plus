@@ -1,4 +1,4 @@
-import { useReportSkinNames } from '@/lib/history-skins'
+import { SonaSegmented } from './SonaSegmented'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { HistoryAssetTooltip } from './HistoryAssetTooltip'
 import { HistoryReplayButton } from './HistoryReplayButton'
@@ -341,7 +341,6 @@ function reportColumns(game: SgpGameSummaryLol, view: ReportView, show: (field: 
 }
 
 export function MatchReport({ game, focusPuuid, onInspect }: { game: SgpGameSummaryLol; focusPuuid: string; onInspect?: (puuid: string, name: string) => void }) {
-  const skinName = useReportSkinNames(game.json.participants)
   const [view, setView] = useState<ReportView>('combat')
   const hidden = useHistoryHiddenFields()
   const show = (field: ReportField) => isHistoryFieldVisible(hidden, 'report', field)
@@ -361,10 +360,9 @@ export function MatchReport({ game, focusPuuid, onInspect }: { game: SgpGameSumm
     <div className="rh-report-toolbar">
       <strong>战报 <b className="rh-report-count">{game.json.participants.length}<small> 人</small></b></strong>
       <span>版本 <b>{game.json.gameVersion?.split('.').slice(0,2).join('.') || '—'}</b></span>
-      <div className="rh-segment">
-        <button type="button" className={view === 'combat' ? 'is-active' : ''} aria-label="战斗与经济" onClick={() => setView('combat')}>战斗</button>
-        <button type="button" className={view === 'support' ? 'is-active' : ''} aria-label="治疗、控制与视野" onClick={() => setView('support')}>支援</button>
-      </div>
+      <SonaSegmented label="战报分组" value={view} onChange={setView} className="rh-report-switch" options={[
+        {value:'combat',label:'战斗',ariaLabel:'战斗与经济'}, {value:'support',label:'支援',ariaLabel:'治疗、控制与视野'},
+      ]} />
     </div>
     <div className="rh-table-scroll"><table className="rh-report-table"><thead><tr><th>玩家 / 英雄</th>
       {columns.map(({ key, label }) => <th key={key}>{label}</th>)}
@@ -377,8 +375,8 @@ export function MatchReport({ game, focusPuuid, onInspect }: { game: SgpGameSumm
         const outcome = getOutcome(game, players[0])
         const teamName = game.json.gameMode === 'CHERRY' ? `小队 ${key}` : key === 100 ? '蓝色方' : key === 200 ? '红色方' : `队伍 ${key}`
         const result = outcome === 'win' ? '胜利' : outcome === 'loss' ? '失败' : outcome === 'remake' ? '重开' : '终止 / 未知'
-        return <TeamReportRows key={key} players={players} game={game} focusPuuid={focusPuuid} onInspect={onInspect} columns={columns} teamKills={teamKills} skinName={skinName}
-          label={<><strong>{teamName} · {result}</strong><span><b>{kills}</b>击杀</span><span><b>{numberText(totalGold)}</b>金币</span>{objective && <>{[['塔',objective.tower?.kills],['小龙',objective.dragon?.kills],['大龙',objective.baron?.kills]].map(([label,value])=><span key={label}><b>{value ?? '—'}</b>{label}</span>)}</>}</>} />
+        return <TeamReportRows key={key} players={players} game={game} focusPuuid={focusPuuid} onInspect={onInspect} columns={columns} teamKills={teamKills}
+          label={<><strong>{teamName}</strong><b className={`rh-report-outcome rh-report-outcome--${outcome}`}>{result}</b><span><b>{kills}</b>击杀</span><span><b>{numberText(totalGold)}</b>金币</span>{objective && <>{[['塔',objective.tower?.kills],['小龙',objective.dragon?.kills],['大龙',objective.baron?.kills]].map(([label,value])=><span key={label}><b>{value ?? '—'}</b>{label}</span>)}</>}</>} />
       })}
     </tbody></table></div>
     {(damageLegend || economyLegend) && <div className="rh-report-legend">
@@ -389,16 +387,15 @@ export function MatchReport({ game, focusPuuid, onInspect }: { game: SgpGameSumm
   </div>
 }
 
-function TeamReportRows({ players, label, game, focusPuuid, onInspect, columns, teamKills, skinName }: {
+function TeamReportRows({ players, label, game, focusPuuid, onInspect, columns, teamKills }: {
   players: SgpParticipantLol[]; label: ReactNode; game: SgpGameSummaryLol; focusPuuid: string
   onInspect?: (puuid: string, name: string) => void; columns: ReportColumn[]; teamKills: number | null
-  skinName: (player: SgpParticipantLol) => string
 }) {
   return <><tr className="rh-team-divider"><td colSpan={columns.length + 1}>{label}</td></tr>
     {players.map((p, index) => <tr key={p.puuid || index} className={p.puuid === focusPuuid ? 'is-focus' : ''}>
       <td><button type="button" className="rh-player-link" disabled={!p.puuid || !onInspect} onClick={() => onInspect?.(p.puuid, riotName(p))}>
         <HistoryImage src={getChampIcon(p.championId)} label={championName(p.championId)} />
-        <span><strong><HistoryPlayerName name={riotName(p)} showTag /></strong><small>{championName(p.championId)}{skinName(p) && <> · <span className="rh-recorded-skin">{skinName(p)}</span></>}</small></span>
+        <span><strong><HistoryPlayerName name={riotName(p)} showTag /></strong><small>{championName(p.championId)}</small></span>
       </button></td>
       {columns.map(({ key, render }) =>
         <td key={key} className={key === 'loadout' ? 'rh-report-loadout-cell' : undefined}>{render(p, teamKills)}</td>)}

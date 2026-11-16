@@ -12,7 +12,7 @@ import { HistoryScrollTop } from './HistoryScrollTop'
 import { RefreshIcon, SettingsIcon, SearchIcon } from './icons'
 import { ChampionStrip, HistoryImage, RankCards, SummaryStats, championName } from './HistoryWidgets'
 import { HistoryMatchList } from './HistoryMatchList'
-import { getChampIcon, getPlayableQueues, getQueueName } from '@/lib/assets'
+import { getChampIcon, getPlayableQueues, getQueueName, getQueue } from '@/lib/assets'
 import { deadline, fetchHistoryMastery, fetchHistoryRanks, fetchHistorySummoner, type HistoryMastery, type HistoryRank } from '@/lib/history-api'
 import { lcu } from '@/lib/lcu'
 import { historyPlayerFromSummoner, historyServerName, rememberHistoryPlayer, type HistoryPlayer } from '@/lib/history-search'
@@ -26,10 +26,12 @@ import { getHistoryEpoch, historyRequests } from '@/lib/shared-requests'
 import '@/styles/PersonalHistory.css'
 
 export interface PlayerHistoryModalProps { open: boolean; onClose: () => void; puuid: string; playerName: string; queueId?: number }
+const LANE_POSITIONS = ['TOP','JUNGLE','MIDDLE','BOTTOM','UTILITY']
+
 interface HistoryView {
   queueId: number; batchSize: number; championId: number; position: string; result: string; hideAborted: boolean
   tab: 'matches' | 'champions' | 'trend'; showAllMastery: boolean; expanded: string[]; sidebarTop: number; contentTop: number
-  championSort: string; championMin: number
+  championSort: string; championDirection?: 'asc' | 'desc'; championMin: number
 }
 
 export function PlayerHistoryModal({ open, onClose, puuid, playerName, queueId }: PlayerHistoryModalProps) {
@@ -66,6 +68,7 @@ function PlayerHistoryContent({ open, target, defaultQueueId, onSelectPlayer, on
   const [tab, setTab] = useState<'matches' | 'champions' | 'trend'>(savedView?.tab ?? 'matches')
   const [expanded, setExpanded] = useState(() => new Set(savedView?.expanded ?? []))
   const [championSort, setChampionSort] = useState(savedView?.championSort ?? 'total')
+  const [championDirection, setChampionDirection] = useState<'asc'|'desc'>(savedView?.championDirection ?? 'desc')
   const [championMin, setChampionMin] = useState(savedView?.championMin ?? 1)
   const [profile, setProfile] = useState<HistoryPlayer | null>(null)
   const [ranks, setRanks] = useState<HistoryRank[] | null>(null)
@@ -88,7 +91,7 @@ function PlayerHistoryContent({ open, target, defaultQueueId, onSelectPlayer, on
   const show = (field: HistoryDisplayField<'history'>) => isHistoryFieldVisible(hidden, 'history', field)
   const showRanks = show('ranks'), showMastery = show('mastery')
   const viewRef = useRef<HistoryView>(null!)
-  viewRef.current = { queueId, batchSize, championId, position, result, hideAborted, tab, showAllMastery, expanded: [...expanded], sidebarTop: 0, contentTop: 0, championSort, championMin }
+  viewRef.current = { queueId, batchSize, championId, position, result, hideAborted, tab, showAllMastery, expanded: [...expanded], sidebarTop: 0, contentTop: 0, championSort, championDirection, championMin }
   useLayoutEffect(() => {
     const sidebar = sidebarRef.current, content = contentRef.current
     return () => rememberView({ ...viewRef.current, sidebarTop: sidebar?.scrollTop ?? 0, contentTop: content?.scrollTop ?? 0 })
@@ -146,15 +149,22 @@ function PlayerHistoryContent({ open, target, defaultQueueId, onSelectPlayer, on
   }, [open, target, profileRevision, showRanks, showMastery])
 
   const allMatches = useMemo(() => toHistoryMatches(pages.games, target.puuid).filter((m) => !queueId || m.game.json.queueId === queueId), [pages.games, target.puuid, queueId])
-  const filtered = useMemo(() => allMatches.filter((m) => (!championId || m.player.championId === championId) && (!position || m.position === position) && (!result || m.outcome === result) && (!hideAborted || (m.outcome !== 'remake' && m.outcome !== 'abort'))), [allMatches, championId, position, result, hideAborted])
+  const showPositionFilter = queueId ? getQueue(queueId)?.mapId === 11 || (!getQueue(queueId)?.mapId && allMatches.some((match)=>match.game.json.mapId===11)) : allMatches.some((match)=>match.game.json.mapId===11)
+  const activePosition = showPositionFilter && LANE_POSITIONS.includes(position) ? position : ''
+  const knownNonRift = queueId ? Boolean(getQueue(queueId)?.mapId && getQueue(queueId)?.mapId !== 11) : allMatches.length > 0 && !showPositionFilter
+  useEffect(()=>{if(position && (!LANE_POSITIONS.includes(position) || knownNonRift))setPosition('')},[position,knownNonRift])
+  const filtered = useMemo(() => allMatches.filter((m) => (!championId || m.player.championId === championId) && (!activePosition || m.position === activePosition) && (!result || m.outcome === result) && (!hideAborted || (m.outcome !== 'remake' && m.outcome !== 'abort'))), [allMatches, championId, activePosition, result, hideAborted])
   const stats = useMemo(() => summarize(filtered), [filtered])
   const champions = useMemo(() => championStats(allMatches), [allMatches])
   const filteredChampions = useMemo(() => championStats(filtered), [filtered])
   const sortedChampions = useMemo(() => filteredChampions.filter((item) => item.total >= championMin).sort((a, b) => {
+    if (championSort === 'name') return championName(a.id).localeCompare(championName(b.id), 'zh-CN') * (championDirection === 'asc' ? 1 : -1)
     const field = championSort as 'total' | 'winRate' | 'kda' | 'participation' | 'damageShare' | 'takenShare' | 'csPerMinute'
     const left = a[field], right = b[field]
-    return (right ?? -1) - (left ?? -1) || b.total - a.total || a.id - b.id
-  }), [filteredChampions, championSort, championMin])
+    if (left == null || !Number.isFinite(left)) return right == null || !Number.isFinite(right) ? a.id-b.id : 1
+    if (right == null || !Number.isFinite(right)) return -1
+    return (right-left) * (championDirection === 'desc' ? 1 : -1) || b.total - a.total || a.id - b.id
+  }), [filteredChampions, championSort, championDirection, championMin])
   const teammates = useMemo(() => encounters(filtered, 'ally'), [filtered])
   const opponents = useMemo(() => encounters(filtered, 'enemy'), [filtered])
   const filteredGames = useMemo(() => filtered.map((match) => match.game), [filtered])
@@ -254,17 +264,14 @@ function PlayerHistoryContent({ open, target, defaultQueueId, onSelectPlayer, on
           </form>
           <span className="rh-muted">{pages.updatedAt ? `更新于 ${new Date(pages.updatedAt).toLocaleTimeString('zh-CN')}` : '正在查询'}</span>
         </div>
-        <div className="rh-local-filters"><HistorySelect aria-label="筛选英雄" value={championId} onChangeValue={(value) => setChampionId(Number(value))}><option value={0}>全部英雄</option>{champions.map((c) => <option key={c.id} value={c.id}>{championName(c.id)} · {c.total} 场</option>)}{championId > 0 && !champions.some((c) => c.id === championId) && <option value={championId}>{championName(championId)} · 当前未加载</option>}</HistorySelect><HistorySelect positions aria-label="筛选位置" value={position} onChangeValue={(value) => setPosition(value)}><option value="">全部位置</option>{Object.entries(POSITION_NAMES).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</HistorySelect><HistorySelect aria-label="筛选胜负" value={result} onChangeValue={(value) => setResult(value)}><option value="">全部胜负</option><option value="win">胜利</option><option value="loss">失败</option></HistorySelect><label><input type="checkbox" checked={hideAborted} onChange={(e) => setHideAborted(e.target.checked)} />隐藏重开 / 终止</label><button type="button" className="rh-text-button" onClick={resetLocalFilters}>重置筛选</button></div>
+        <div className="rh-local-filters"><HistorySelect aria-label="筛选英雄" value={championId} onChangeValue={(value) => setChampionId(Number(value))}><option value={0}>全部英雄</option>{champions.map((c) => <option key={c.id} value={c.id}>{championName(c.id)} · {c.total} 场</option>)}{championId > 0 && !champions.some((c) => c.id === championId) && <option value={championId}>{championName(championId)} · 当前未加载</option>}</HistorySelect>{showPositionFilter && <HistorySelect positions aria-label="筛选位置" value={activePosition} onChangeValue={(value) => setPosition(value)}><option value="">全部分路</option>{LANE_POSITIONS.map((key) => <option key={key} value={key}>{POSITION_NAMES[key]}</option>)}</HistorySelect>}<HistorySelect aria-label="筛选胜负" value={result} onChangeValue={(value) => setResult(value)}><option value="">全部胜负</option><option value="win">胜利</option><option value="loss">失败</option></HistorySelect><label><input type="checkbox" checked={hideAborted} onChange={(e) => setHideAborted(e.target.checked)} />隐藏重开 / 终止</label><button type="button" className="rh-text-button" onClick={resetLocalFilters}>重置筛选</button></div>
         {pages.scanLimit && <div className="rh-notice">当前范围为最近 {pages.scanLimit} 场。</div>}
         {pages.error && <div className="rh-error" role="alert">{pages.error}<button type="button" onClick={allMatches.length && pages.hasMore ? () => void pages.loadMore() : refresh}>重试</button></div>}
         <div className="rh-content rh-scroll-area" ref={contentRef}>
           {pages.loading ? <div className="rh-empty"><span className="rh-spinner" />正在加载战绩…<span className="rh-kaomoji" aria-hidden="true">(｡･ω･｡)</span></div> : !filtered.length ? <div className="rh-empty"><span>{allMatches.length ? '当前筛选下没有已加载对局。可重置筛选或继续加载。' : pages.error ? '战绩查询未完成，请重试。' : '当前查询范围没有对局记录。'}</span>{!pages.error && <span className="rh-kaomoji" aria-hidden="true">(・ω・)</span>}</div> : tab === 'matches' ? <HistoryMatchList matches={filtered} hidden={hidden} onInspect={onInspect} scrollRef={contentRef} expanded={expanded} onExpandedChange={changeExpanded} /> : tab === 'trend' ? <HistoryTrendPanel matches={filtered} games={filteredGames} puuid={target.puuid} system={scoreSystem} score={strength} /> : <div className="rh-champion-results"><div className="rh-champion-controls">
-            <label>排序<HistorySelect aria-label="英雄统计排序" value={championSort} onChangeValue={(value) => setChampionSort(value)}>
-              {[['total','场次'],['winRate','胜率'],['kda','KDA'],['participation','参团率'],['damageShare','伤害占比'],['takenShare','承伤占比'],['csPerMinute','补刀 / 分']].map(([key,label]) => <option key={key} value={key}>{label} ↓</option>)}
-            </HistorySelect></label>
             <label>最低场次<HistorySelect aria-label="英雄统计最低场次" value={championMin} onChangeValue={(value) => setChampionMin(Number(value))}>{[1,3,5,10,20].map((count) => <option key={count} value={count}>{count} 场</option>)}</HistorySelect></label>
             <span className="rh-muted">{sortedChampions.length} 位英雄</span>
-          </div><div className="rh-table-scroll"><table className="rh-champion-table"><thead><tr>{['英雄', '场次', '胜率', 'KDA', '参团', '伤害占比', '承伤占比', '补刀 / 分'].map((label) => <th key={label}>{label}</th>)}</tr></thead><tbody>{sortedChampions.map((c) => <tr key={c.id}><td><button type="button" className="rh-player-link" onClick={() => { setChampionId(c.id); setTab('matches') }}><HistoryImage src={getChampIcon(c.id)} label={championName(c.id)} /><span>{championName(c.id)}</span></button></td><td>{c.total}</td><td>{percentText(c.winRate)}</td><td>{numberText(c.kda, 2)}</td><td>{percentText(c.participation)}</td><td>{percentText(c.damageShare)}</td><td>{percentText(c.takenShare)}</td><td>{numberText(c.csPerMinute, 1)}</td></tr>)}</tbody></table></div>{!sortedChampions.length && <div className="rh-empty">没有达到最低场次的英雄</div>}</div>}
+          </div><div className="rh-table-scroll"><table className="rh-champion-table"><thead><tr>{[['name','英雄'],['total','场次'],['winRate','胜率'],['kda','KDA'],['participation','参团'],['damageShare','伤害占比'],['takenShare','承伤占比'],['csPerMinute','补刀 / 分']].map(([key,label]) => <th key={key} aria-sort={championSort===key ? championDirection==='asc'?'ascending':'descending' : 'none'}><button type="button" className="rh-column-sort" data-sort-key={key} aria-label={`${label}排序`} onClick={()=>{if(championSort===key)setChampionDirection((value)=>value==='desc'?'asc':'desc');else {setChampionSort(key);setChampionDirection(key==='name'?'asc':'desc')}}}>{label}<svg width="10" height="12" viewBox="0 0 10 12" aria-hidden="true" fill="currentColor"><path opacity={championSort===key&&championDirection==='asc'?1:.3} d="m5 1 4 4H1z"/><path opacity={championSort===key&&championDirection==='desc'?1:.3} d="m5 11 4-4H1z"/></svg></button></th>)}</tr></thead><tbody>{sortedChampions.map((c) => <tr key={c.id}><td><button type="button" className="rh-player-link" onClick={() => { setChampionId(c.id); setTab('matches') }}><HistoryImage src={getChampIcon(c.id)} label={championName(c.id)} /><span>{championName(c.id)}</span></button></td><td>{c.total}</td><td>{percentText(c.winRate)}</td><td>{numberText(c.kda, 2)}</td><td>{percentText(c.participation)}</td><td>{percentText(c.damageShare)}</td><td>{percentText(c.takenShare)}</td><td>{numberText(c.csPerMinute, 1)}</td></tr>)}</tbody></table></div>{!sortedChampions.length && <div className="rh-empty">没有达到最低场次的英雄</div>}</div>}
           {!pages.loading && <div className="rh-load-more"><HistoryAssetTooltip title={pages.loadingMore ? '正在加载…' : pages.hasMore ? `继续加载 ${batchSize} 场` : '已加载完毕'} compact asChild><button type="button" className="rh-button rh-icon-button" aria-label={pages.loadingMore ? '正在加载…' : pages.hasMore ? `继续加载 ${batchSize} 场` : '已加载完毕'} disabled={!pages.hasMore || pages.loadingMore} onClick={() => void pages.loadMore()}>{pages.loadingMore ? <span className="rh-spinner" /> : <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>}</button></HistoryAssetTooltip></div>}
         </div>
       </main>
@@ -276,6 +283,6 @@ function PlayerHistoryContent({ open, target, defaultQueueId, onSelectPlayer, on
       setSearchText('')
       onSelectPlayer(player)
     }} />
-    <HistoryCompareModal open={open && showCompare} onClose={() => setShowCompare(false)} games={filteredGames} puuid={target.puuid} system={scoreSystem} candidates={compareCandidates} serverId={target.serverId} queueId={queueId} count={batchSize} filters={{championId,position,outcome:result,hideAborted}} sourceLoading={pages.loading} onRefresh={refresh} />
+    <HistoryCompareModal open={open && showCompare} onClose={() => setShowCompare(false)} games={filteredGames} puuid={target.puuid} system={scoreSystem} candidates={compareCandidates} serverId={target.serverId} queueId={queueId} count={batchSize} filters={{championId,position:activePosition,outcome:result,hideAborted}} sourceLoading={pages.loading} onRefresh={refresh} />
   </div>
 }

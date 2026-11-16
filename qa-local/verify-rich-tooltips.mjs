@@ -8,9 +8,6 @@ export async function verifyRichTooltips(page,out) {
   const color=(scope,semantic)=>scope.locator(`[data-game-semantic="${semantic}"]`).first().evaluate((node)=>getComputedStyle(node).color)
   const assetRoute=async(route)=>route.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48"><rect width="48" height="48" fill="#203044"/></svg>'})
   await page.route('https://data.aramkit.cn/assets/**',assetRoute)
-  let skinRequests=0
-  const skinRoute=async(route)=>{skinRequests++;return route.fulfill({json:{skins:[{id:86003,name:'模拟皮肤名称'}]}})}
-  await page.route('**/lol-game-data/assets/v1/champions/86.json',skinRoute)
   try {
     await run('native')
     for(const row of await run('styleDescriptions'))assert.equal(row.actual,row.expected)
@@ -61,12 +58,6 @@ export async function verifyRichTooltips(page,out) {
     await page.waitForFunction(()=>getComputedStyle(document.querySelector('.sobp-official-tooltip')).opacity==='1')
     await kit.screenshot({path:path.join(out,'海克斯说明_属性颜色_模拟.png')})
     await page.mouse.move(2,2);await kit.waitFor({state:'hidden'})
-    await run('skins')
-    await rich.getByTestId('skin-0').getByText('模拟皮肤名称',{exact:true}).waitFor()
-    assert.equal(await rich.getByTestId('skin-1').textContent(),'模拟皮肤名称')
-    assert.equal(await rich.getByTestId('skin-2').textContent(),'')
-    assert.equal(await rich.getByTestId('skin-3').textContent(),'已记录的皮肤')
-    assert.equal(skinRequests,1,'same champion skin metadata is shared')
     console.log('[verify] native items/runes, all five official style descriptions, ARAMKit item/augment colors, nested semantics, safe text rendering, and click dismissal passed')
-  } finally { await run('clear'); await page.unroute('https://data.aramkit.cn/assets/**',assetRoute); await page.unroute('**/lol-game-data/assets/v1/champions/86.json',skinRoute) }
+  } finally { await run('clear'); await page.unroute('https://data.aramkit.cn/assets/**',assetRoute) }
 }

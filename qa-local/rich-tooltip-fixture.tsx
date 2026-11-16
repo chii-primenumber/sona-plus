@@ -6,7 +6,6 @@ import { getPerkStyleDescription } from '@/lib/assets'
 import { parseAramKitRecommendation, type AramKitDetail } from '@/lib/aramkit-api'
 import sample from './fixtures/game-descriptions.json'
 import type { SgpParticipantLol } from '@/types/sgp'
-import { useReportSkinNames } from '@/lib/history-skins'
 
 let root: Root | undefined
 let host: HTMLDivElement | undefined
@@ -31,10 +30,3 @@ export function panel() {
     loadError="" isLoading={false} selectedTier="all" onTierChange={()=>{}} onPositionChange={()=>{}} onClose={clear} />)
 }
 export function styleDescriptions() { return sample.styles.map(({id,tooltip})=>({id,expected:tooltip,actual:getPerkStyleDescription(id)})) }
-
-const skinPlayers = [{championId:86,skinId:86003},{championId:86,skinIndex:3},{championId:86},{championId:86,skinName:'已记录的皮肤'}] as SgpParticipantLol[]
-function Skins() {
-  const name = useReportSkinNames(skinPlayers)
-  return <div>{skinPlayers.map((player,index)=><div data-testid={`skin-${index}`} key={index}>{name(player)}</div>)}</div>
-}
-export function skins() { container().render(<Skins />) }

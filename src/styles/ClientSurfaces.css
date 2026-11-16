@@ -60,3 +60,11 @@
 
 /* Keep native in-game layout rules from stretching circular entry controls. */
 :root .game-in-progress-container .sona-client-icon-button { width: 32px; min-width: 32px; max-width: 32px; height: 32px; min-height: 32px; max-height: 32px; }
+
+.rh-report-toolbar .rh-report-switch { margin-left: auto; height: 28px; }
+:root .rh-report-table .rh-team-divider .rh-report-outcome { margin-right: 12px; }
+:root .rh-report-table .rh-team-divider .rh-report-outcome--win { color: #00c7d9; }
+:root .rh-report-table .rh-team-divider .rh-report-outcome--loss { color: #ff4655; }
+.rh-column-sort { display: inline-flex; align-items: center; gap: 5px; padding: 2px 0; border: 0; background: transparent; color: inherit; font: inherit; font-weight: inherit; cursor: pointer; }
+.rh-column-sort:hover, th[aria-sort="ascending"] .rh-column-sort, th[aria-sort="descending"] .rh-column-sort { color: rgb(var(--sona-accent-rgb)); }
+.rh-column-sort:focus-visible { outline: 1px solid rgb(var(--sona-accent-rgb)); outline-offset: 3px; }
