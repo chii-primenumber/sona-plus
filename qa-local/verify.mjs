@@ -5,6 +5,7 @@ import path from 'node:path'
 import fs from 'node:fs/promises'
 import { execFileSync } from 'node:child_process'
 import { verifyUiOptimizations } from './verify-ui-optimizations.mjs'
+import { verifyMayhemDeltas } from './verify-mayhem-deltas.mjs'
 import { verifyRecommendationLifecycle } from './verify-recommendation-lifecycle.mjs'
 import { installPerformanceProbe, measurePerformance } from './measure-performance.mjs'
 
@@ -1245,7 +1246,7 @@ try {
       context:{championId:16,queueId:2400,gameMode:'KIWI',position:'none',gameVersion:'fixture'},
       recommendation:{mode:'aram',modeLabel:'海克斯大乱斗',version:'fixture',position:'none',baselineWinRate:.5,summary:[],
         coreItems:[{ids:[6617,3504,6621],win:51,play:100,pick_rate:.2}],lastItems:[{ids:[6617],win:49,play:100,pick_rate:.3}],
-        starterItems:[{ids:[2051,3070],win:0,play:0,pick_rate:NaN}],boots:[{ids:[3158],win:55,play:100,pick_rate:.6,baselineWinRate:null}],prismItems:[],runePages:[],summonerSpells:[],matchups:[],
+        starterItems:[{ids:[2051,3070],win:0,play:0,pick_rate:NaN}],boots:[{ids:[3158],win:55,play:100,pick_rate:.6,baselineWinRate:.45}],prismItems:[],runePages:[],summonerSpells:[],matchups:[],
         augments:[{rarity:1,items:[{id:101,pickRate:.2,winRate:.55},{id:102,pickRate:.1,winRate:0},{id:103,pickRate:.1}]}]},
       isLoading:false,loadError:'',selectedTier:'all',onTierChange:()=>{},onPositionChange:()=>{},onClose:()=>{}
     }
@@ -1262,10 +1263,9 @@ try {
   await mayhemPanel.locator('.sobp-core-builds .sobp-win-delta').waitFor({state:'attached'})
   assert.equal(await mayhemPanel.locator('.sobp-core-builds .sobp-win-delta.is-positive').textContent(),'(+1.0%)')
   assert.equal(await mayhemPanel.locator('.sobp-last-item .sobp-win-delta.is-negative').textContent(),'(-1.0%)')
-  assert.equal(await mayhemPanel.locator('.sobp-equipment-card').count(),2)
-  assert.equal(await mayhemPanel.locator('[data-section-title="出门装推荐"] .sobp-win-rate strong').textContent(),'—')
-  assert.equal(await mayhemPanel.locator('[data-section-title="出门装推荐"] .sobp-pick-rate strong').textContent(),'—')
-  assert.equal(await mayhemPanel.locator('[data-section-title="鞋子推荐"] .sobp-win-delta').count(),0)
+  assert.equal(await mayhemPanel.locator('.sobp-equipment-card').count(),1)
+  assert.equal(await mayhemPanel.locator('[data-section-title="出门装推荐"]').count(),0)
+  assert.equal(await mayhemPanel.locator('[data-section-title="鞋子推荐"] .sobp-win-delta').textContent(),'(+10.0%)')
 
   const augmentDeltas=await mayhemPanel.locator('.sobp-augment-grid .sobp-win-delta').allTextContents()
   assert.deepEqual(augmentDeltas,['(+5.0%)','(-50.0%)'])
@@ -1318,6 +1318,7 @@ try {
   await mayhemPanel.evaluate((node)=>{node.style.cssText='position:fixed;inset:12px;z-index:2147483647;background:#111;height:calc(100vh - 24px)'})
   await mayhemPanel.screenshot({path:path.join(out,'海斗紧凑海克斯筛选_模拟数据.png')})
   await page.evaluate(()=>{window.qaMayhemRoot.unmount();document.getElementById('qa-mayhem-recommendations').remove()})
+  await verifyMayhemDeltas(page)
   await verifyRecommendationLifecycle(page)
   assert.equal(errors.length,0,errors.join('\n'))
   assert.equal(writes.length,0,writes.join('\n'))

@@ -1502,7 +1502,7 @@ async function loadAramggKiwiRecommendation(
       logger.warn('[OPGG] KIWI 基础配装请求失败，将只使用 ARAM.GG 数据:', err)
       return null
     }),
-    aramggApi.getChampionRecommendation(context.championId, { signal }),
+    aramggApi.getChampionRecommendation(context.championId, { signal, includeStartingItems: false }),
     aramggApi.getMayhemAugmentsZhCn({ signal }).catch((err) => {
       logger.warn('[ARAMGG] 海克斯稀有度请求失败，将尝试使用客户端资源兜底:', err)
       return {} as AramggMayhemAugments
@@ -1510,13 +1510,15 @@ async function loadAramggKiwiRecommendation(
   ])
 
   const normal = opggChampion && isNormalChampion(opggChampion) ? opggChampion : null
+  const supplementalBaseline = normal?.data.summary.average_stats.win_rate ?? null
+  const withSupplementalBaseline = (build: OpggItemBuild) => ({ ...build, baselineWinRate: supplementalBaseline })
   const data = opggChampion?.data
   const aramggCoreItems = mapAramggCoreItemBuilds(aramgg.coreItemBuilds)
   const aramggLastItems = mapAramggItems(aramgg.items)
 
   // ARAM.GG 偶尔会在页面结构升级后暂时解析不到装备数据。海克斯模式仍然
   // 需要优先使用它的专属数据，但每个空分段都必须退回 OP.GG，避免生成的
-  // 本地配装只剩鞋子。出门装来自 ARAM.GG 的公开海斗页面；未公开组合统计时保留缺失。
+  // 本地配装只剩鞋子。补充分段使用同来源、同模式的英雄胜率基准。
   if (aramggCoreItems.length === 0 || aramggLastItems.length === 0) {
     logger.warn(
       '[BuildRecommendation] ARAM.GG 装备分段为空，回退 OP.GG：champion=%d core=%d last=%d',
@@ -1533,12 +1535,12 @@ async function loadAramggKiwiRecommendation(
     position,
     baselineWinRate: toOptionalNumber(aramgg.championStats?.win_rate),
     summary: getAramggSummaryLines(aramgg),
-    summonerSpells: (normal?.data.summoner_spells ?? []).map((build)=>({...build,baselineWinRate:null})),
-    starterItems: (aramgg.starterItems ?? []).map(({ids})=>({ids,win:0,play:0,pick_rate:NaN})),
-    boots: (data?.boots ?? []).map((build)=>({...build,baselineWinRate:null})),
-    coreItems: aramggCoreItems.length > 0 ? aramggCoreItems : (data?.core_items ?? []).map((build)=>({...build,baselineWinRate:null})),
+    summonerSpells: (normal?.data.summoner_spells ?? []).map(withSupplementalBaseline),
+    starterItems: [],
+    boots: (data?.boots ?? []).map(withSupplementalBaseline),
+    coreItems: aramggCoreItems.length > 0 ? aramggCoreItems : (data?.core_items ?? []).map(withSupplementalBaseline),
     prismItems: [],
-    lastItems: aramggLastItems.length > 0 ? aramggLastItems : (data?.last_items ?? []).map((build)=>({...build,baselineWinRate:null})),
+    lastItems: aramggLastItems.length > 0 ? aramggLastItems : (data?.last_items ?? []).map(withSupplementalBaseline),
     runePages: [],
     matchups: [],
     augments: mapAramggAugments(aramgg.augments, mayhemAugments),

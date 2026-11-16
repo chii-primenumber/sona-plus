@@ -3,6 +3,7 @@ import { SharedRequests } from './shared-requests'
 export interface AramggRequestOptions {
   signal?: AbortSignal
   timeoutMs?: number
+  includeStartingItems?: boolean
 }
 
 export interface AramggMayhemAugment {
@@ -352,7 +353,7 @@ export class AramggDataApi {
     const [details, ranking, html] = await Promise.all([
       this.request<AramggChampionDetails>(`/data/champion-details/${championId}.json`, options),
       rankingPromise,
-      this.request<string>(`/en/champion-stats/${championId}`, options, true).catch((error)=>{
+      options.includeStartingItems === false ? Promise.resolve('') : this.request<string>(`/en/champion-stats/${championId}`, options, true).catch((error)=>{
         console.warn('[ARAMGG] Mayhem starting combinations unavailable:',error)
         return ''
       }),

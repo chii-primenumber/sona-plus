@@ -181,7 +181,7 @@ export function OpggBuildRecommendationPanel({
               <SpellSection title={t('opgg.section.spells')} builds={recommendation?.summonerSpells} limit={MAX_RECOMMENDATION_ROWS} />
             </div>
             {showEarlyItems && <>
-              <CompactEquipmentSection title="出门装推荐" builds={recommendation?.starterItems} />
+              {!mayhem && <CompactEquipmentSection title="出门装推荐" builds={recommendation?.starterItems} />}
               <CompactEquipmentSection title="鞋子推荐" builds={recommendation?.boots} />
             </>}
               <div className="sobp-core-builds" data-testid="three-item-builds"><ItemSection title="核心出装" builds={recommendation?.coreItems?.filter((build) => build.ids.length === 3 && build.ids.every((id) => Number.isInteger(id) && id > 0) && new Set(build.ids).size === 3)} itemLimit={3} /></div>
