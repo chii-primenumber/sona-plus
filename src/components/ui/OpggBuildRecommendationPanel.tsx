@@ -172,6 +172,7 @@ export function OpggBuildRecommendationPanel({
           </>
         ) : (
           <>
+            {mayhem && <AugmentSection title={t('opgg.section.augments')} groups={recommendation?.augments} />}
             <div className={`sobp-grid${mayhem ? " sobp-grid--mayhem" : ""}`}>
               {!mayhem && <RuneSection title={t('opgg.section.runes')} runes={recommendation?.runePages} championName={championName} modeLabel={recommendation?.modeLabel || queueText} />}
               <SpellSection title={t('opgg.section.spells')} builds={recommendation?.summonerSpells} limit={MAX_RECOMMENDATION_ROWS} />
@@ -181,7 +182,7 @@ export function OpggBuildRecommendationPanel({
               <LastItemTrendSection title="后续成装推荐" builds={recommendation?.lastItems} />
             </div>
             {!mayhem && <MatchupSection title={t('opgg.section.matchups')} matchups={recommendation?.matchups} />}
-            {showAugments && <AugmentSection title={t('opgg.section.augments')} groups={recommendation?.augments} />}
+            {showAugments && !mayhem && <AugmentSection title={t('opgg.section.augments')} groups={recommendation?.augments} />}
           </>
         )}
 
@@ -615,6 +616,7 @@ function RuneSection({ title, runes, championName, modeLabel }: { title: string;
 
 function AugmentSection({ title, groups }: { title: string; groups?: BuildRecommendation['augments'] }) {
   const [rarity, setRarity] = useState(0)
+  const [display, setDisplay] = useState<Record<number, string>>({})
   const entries = [...new Map((groups ?? []).flatMap((group) => group.items.map((item) => ({...item, rarity: group.rarity, rarityLabel: group.label ?? getAugmentRarityLabel(group.rarity)}))).map((item) => [item.id,item])).values()]
     .filter((item) => !rarity || item.rarity === rarity)
     .sort((a,b) => (Number.isFinite(b.winRate) ? b.winRate! : -1) - (Number.isFinite(a.winRate) ? a.winRate! : -1) || b.pickRate-a.pickRate || a.id-b.id)
@@ -624,8 +626,20 @@ function AugmentSection({ title, groups }: { title: string; groups?: BuildRecomm
       <small>{entries.length} 个 · 胜率排序</small>
     </div>
     <Section title={title} empty={!entries.length}>
-      <div className="sobp-augment-grid">
-        {entries.map((augment,index) => {
+      {[8,4,1].filter((type)=>!rarity || type===rarity).map((type)=>{
+        const items=entries.filter((item)=>item.rarity===type)
+        if (!items.length) return null
+        const mode=display[type] ?? 'partial'
+        const label=({8:'棱彩',4:'黄金',1:'白银'} as Record<number,string>)[type]
+        const visible=mode==='hidden' ? [] : mode==='all' ? items : items.slice(0,8)
+        return <div className="sobp-augment-type" key={type} data-augment-type={type}>
+          <div className="sobp-augment-type-heading"><strong>{label}</strong><small>{visible.length} / {items.length}</small>
+            <select aria-label={`${label}显示`} value={mode} onChange={(event)=>setDisplay((old)=>({...old,[type]:event.target.value}))}>
+              <option value="hidden">不显示</option><option value="partial">部分显示（前 8 个）</option><option value="all">展开更多（全部）</option>
+            </select>
+          </div>
+          <div className="sobp-augment-grid">
+        {visible.map((augment,index) => {
           const info=getAugmentInfo(augment.id)
           return <div className="sobp-augment" key={augment.id} data-rarity={augment.rarity}>
             <BuildIcon src={info?.iconPath ?? ''} title={info?.name ?? String(augment.id)} description={info?.description ?? ''} subtitle={augment.rarityLabel} size={26} border={getAugmentBorder(info?.rarity)} />
@@ -636,7 +650,9 @@ function AugmentSection({ title, groups }: { title: string; groups?: BuildRecomm
             </div>
           </div>
         })}
-      </div>
+          </div>
+        </div>
+      })}
     </Section>
   </div>
 }

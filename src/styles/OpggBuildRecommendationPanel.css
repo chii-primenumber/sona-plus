@@ -1041,3 +1041,19 @@
 .sobp-augments-compact .sobp-augment-meta { font-size: 9px; margin-top: 0; }
 
 .sobp-grid--mayhem .sobp-section-card { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,270px),1fr)); align-items: start; }
+
+/* Keep labels next to their values, rather than distributing them across a card. */
+.sobp-pick-rate, .sobp-win-rate { justify-content: flex-start; column-gap: 5px; }
+.sobp-augments-compact .sobp-stat, .sobp-augments-compact .sobp-win-rate,
+.sobp-last-item .sobp-stat, .sobp-last-item .sobp-win-rate { flex: 0 0 auto; min-width: 0; }
+.sobp-augments-compact .sobp-recommendation-stats { justify-content: flex-start; gap: 12px; }
+.sobp-last-item .sobp-recommendation-stats { justify-content: flex-start; margin-left: 4px; gap: 12px; }
+.sobp-augment-type + .sobp-augment-type { margin-top: 7px; }
+.sobp-augment-type-heading { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; color: rgb(var(--sona-accent-rgb)); font-size: 11px; }
+.sobp-augment-type-heading small { color: rgb(var(--sona-muted-rgb)); }
+.sobp-augment-type-heading select { margin-left: auto; padding: 2px 6px; border: 1px solid rgb(var(--sona-accent-rgb) / .35); border-radius: 3px; background: rgb(var(--sona-raised-rgb)); color: rgb(var(--sona-text-rgb)); font: inherit; }
+.sobp-grid--mayhem { margin-top: 12px; }
+
+.sobp-augments-compact .sobp-stat, .sobp-last-item .sobp-stat,
+.sobp-augments-compact .sobp-pick-rate, .sobp-augments-compact .sobp-win-rate,
+.sobp-last-item .sobp-pick-rate, .sobp-last-item .sobp-win-rate { width: auto; }

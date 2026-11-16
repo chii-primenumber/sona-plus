@@ -1231,19 +1231,36 @@ try {
   assert.equal(await mayhemPanel.getByText('优势 / 劣势对局',{exact:true}).count(),0)
   assert.equal(await mayhemPanel.locator('.sobp-augment-grid .sobp-stat-track').first().evaluate((node)=>getComputedStyle(node).display),'none')
   await page.evaluate(()=>{
-    window.qaMayhemProps={...window.qaMayhemProps,recommendation:{...window.qaMayhemProps.recommendation,augments:[8,4,1].map((rarity,g)=>({rarity,items:Array.from({length:7},(_,i)=>({id:1000+g*10+i,pickRate:.1,winRate:.5+(i*3+g)/100}))}))}}
+    window.qaMayhemProps={...window.qaMayhemProps,recommendation:{...window.qaMayhemProps.recommendation,augments:[8,4,1].map((rarity,g)=>({rarity,items:Array.from({length:12},(_,i)=>({id:1000+g*100+i,pickRate:.1,winRate:.5+(i*3+g)/100}))}))}}
     window.qaMayhemRender()
   })
-  await page.waitForFunction(()=>document.querySelectorAll('#qa-mayhem-recommendations .sobp-augment').length===21)
-  const allRates=(await mayhemPanel.locator('.sobp-augment .sobp-win-rate strong').allTextContents()).map(parseFloat)
-  assert.deepEqual(allRates,[...allRates].sort((a,b)=>b-a))
+  await mayhemPanel.evaluate((node)=>{node.style.cssText='position:fixed;inset:12px;z-index:2147483647;background:#111;height:calc(100vh - 24px)'})
+  await page.waitForFunction(()=>document.querySelectorAll('#qa-mayhem-recommendations .sobp-augment').length===24)
+  const mayhemTitles=await mayhemPanel.locator('.sobp-section-title').allTextContents()
+  assert.match(mayhemTitles[0],/海克斯/)
+  for (const label of ['棱彩','黄金','白银']) {
+    const select=mayhemPanel.getByLabel(`${label}显示`)
+    assert.equal(await select.inputValue(),'partial')
+  }
+  for (const group of await mayhemPanel.locator('.sobp-augment-type').all()) {
+    const rates=(await group.locator('.sobp-win-rate strong').allTextContents()).map(parseFloat)
+    assert.deepEqual(rates,[...rates].sort((a,b)=>b-a))
+  }
+  await mayhemPanel.getByLabel('黄金显示').selectOption('hidden')
+  assert.equal(await mayhemPanel.locator('[data-augment-type="4"] .sobp-augment').count(),0)
+  await mayhemPanel.getByLabel('黄金显示').selectOption('all')
+  assert.equal(await mayhemPanel.locator('[data-augment-type="4"] .sobp-augment').count(),12)
+  await mayhemPanel.getByLabel('黄金显示').selectOption('partial')
+  assert.equal(await mayhemPanel.locator('[data-augment-type="4"] .sobp-augment').count(),8)
   for (const [label,rarity] of [['棱彩',8],['黄金',4],['白银',1]]) {
     await mayhemPanel.getByRole('button',{name:label,exact:true}).evaluate((node)=>node.click())
-    await page.waitForFunction((r)=>[...document.querySelectorAll('#qa-mayhem-recommendations .sobp-augment')].length===7&&[...document.querySelectorAll('#qa-mayhem-recommendations .sobp-augment')].every((node)=>Number(node.dataset.rarity)===r),rarity)
+    await page.waitForFunction((r)=>[...document.querySelectorAll('#qa-mayhem-recommendations .sobp-augment')].length===8&&[...document.querySelectorAll('#qa-mayhem-recommendations .sobp-augment')].every((node)=>Number(node.dataset.rarity)===r),rarity)
     assert.equal(await mayhemPanel.getByRole('button',{name:label,exact:true}).getAttribute('aria-pressed'),'true')
   }
   await mayhemPanel.getByRole('button',{name:'全部',exact:true}).evaluate((node)=>node.click())
-  await page.waitForFunction(()=>document.querySelectorAll('#qa-mayhem-recommendations .sobp-augment').length===21)
+  await page.waitForFunction(()=>document.querySelectorAll('#qa-mayhem-recommendations .sobp-augment').length===24)
+  const labelGap=await mayhemPanel.locator('.sobp-augment .sobp-pick-rate').first().evaluate((node)=>node.querySelector('strong').getBoundingClientRect().left-node.querySelector('span').getBoundingClientRect().right)
+  assert.ok(labelGap>=0 && labelGap<=8,`pick label gap ${labelGap}`)
   await mayhemPanel.evaluate((node)=>{node.style.cssText='position:fixed;inset:12px;z-index:2147483647;background:#111;height:calc(100vh - 24px)'})
   await mayhemPanel.screenshot({path:path.join(out,'海斗紧凑海克斯筛选_模拟数据.png')})
   await page.evaluate(()=>{window.qaMayhemRoot.unmount();document.getElementById('qa-mayhem-recommendations').remove()})
