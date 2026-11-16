@@ -1,5 +1,6 @@
 import { cloneElement, isValidElement, useEffect, useId, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { GameDescription } from './GameDescription'
 export interface TooltipStat { label: string; value: string }
 
 export function HistoryAssetTooltip({ className, title, subtitle, description, icon, stats, footer, onShow, children, compact = false, focusable = true, asChild = false }: {
@@ -91,7 +92,7 @@ export function TooltipBubble({ anchor, id, title, subtitle, description, icon, 
       {icon && <img src={icon} alt="" />}
       <div><strong>{title}</strong>{subtitle && <small>{subtitle}</small>}</div>
     </div>
-    {description && <div className="rh-asset-tooltip-description">{description}</div>}
+    {description && <div className="rh-asset-tooltip-description"><GameDescription text={description} /></div>}
     {stats && stats.length>0 && <table className="rh-tooltip-stats" aria-label="英雄表现数据"><tbody>
       {Array.from({length:Math.ceil(stats.length/2)},(_,index)=>stats.slice(index*2,index*2+2)).map((row,index)=><tr key={index}>
         {row.map((stat)=><TooltipStatCells key={stat.label} stat={stat} />)}

@@ -1,3 +1,4 @@
+import { HistorySelect } from './HistorySelect'
 /** Player comparison: loaded shared matches by default, independent history for a manual ID. */
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Modal } from './Modal'
@@ -94,12 +95,12 @@ export function HistoryCompareModal({ open, onClose, games, puuid, system, candi
       <header className="rh-chart-head"><h3>玩家对比</h3></header>
       <div className="rh-compare-pick">
         <label>对比对象
-          <select aria-label="选择对比玩家" value={selected} onChange={(event) => {
-            search.current?.abort(); setSearching(false); setError(''); setChoices([]); setSelected(event.target.value)
+          <HistorySelect aria-label="选择对比玩家" value={selected} onChangeValue={(value) => {
+            search.current?.abort(); setSearching(false); setError(''); setChoices([]); setSelected(value)
           }} disabled={!options.length}>
             {!options.length && <option value="">选择玩家</option>}
             {options.map((candidate) => <option key={candidate.puuid} value={candidate.puuid}>{candidate.name}</option>)}
-          </select>
+          </HistorySelect>
         </label>
         <form className="rh-compare-search" onSubmit={lookup}>
           <input type="search" aria-label="输入对比玩家 ID" placeholder="名字 / 名字#编号 / PUUID" value={query} maxLength={120} autoComplete="off" onChange={(event) => {
@@ -132,7 +133,6 @@ export function HistoryCompareModal({ open, onClose, games, puuid, system, candi
                   <td className="rh-compare-delta">{formatCompareDelta(row, system)}</td></tr>
               })}</tbody>
             </table>
-            <p className="rh-chart-note">高亮为数值较高一方；承伤、治疗等指标高低不直接等于优劣。双方各自按当前模式和筛选统计。</p>
           </div>
         </div>
       ) : <p className="rh-muted">{selected ? '当前筛选下样本不足，无法生成对比。' : '选择玩家或输入 ID 开始对比。'}</p>}

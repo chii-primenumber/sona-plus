@@ -364,6 +364,7 @@ class SonaStore {
       (loaded as Record<string, unknown>)[key] = this.readFromDisk(key)
     }
     this.cache = loaded
+    if (DataStore.get('sona:theme') !== undefined && DataStore.get('sona:theme') !== 'client') DataStore.set('sona:theme', 'client')
   }
 
   /**
@@ -377,6 +378,7 @@ class SonaStore {
    * 设置配置值（自动持久化 + 触发监听）
    */
   set<K extends ConfigKey>(key: K, value: SonaConfig[K]) {
+    if (key === 'theme') value = 'client' as SonaConfig[K]
     const old = this.cache[key]
     if (old === value) return
 
@@ -454,6 +456,7 @@ class SonaStore {
   // ---- 内部方法 ----
 
   private readFromDisk<K extends ConfigKey>(key: K): SonaConfig[K] {
+    if (key === 'theme') return 'client' as SonaConfig[K]
     const stored = DataStore.get<SonaConfig[K]>(`${KEY_PREFIX}${key}`)
     return stored !== undefined ? stored : DEFAULT_CONFIG[key]
   }

@@ -1,3 +1,4 @@
+import { styleClientEntry } from '@/lib/client-entry-button'
 import { createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { logger } from '@/index'
@@ -86,7 +87,7 @@ function tryInjectGameAnalysisButton(): boolean {
 
   const btn = document.createElement('lol-uikit-flat-button')
   btn.setAttribute(GAME_ANALYSIS_BTN_ATTR, 'true')
-  btn.textContent = '对局详情'
+  styleClientEntry(btn, '对局详情', 'team')
   btn.setAttribute('role','button'); btn.setAttribute('tabindex','0')
   // 布局（display / 间距）统一在 inject.css 里处理，两个按钮的注入先后不固定
 

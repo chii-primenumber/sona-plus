@@ -1,3 +1,4 @@
+import { HistorySelect } from './HistorySelect'
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Modal } from './Modal'
 import { PlayerHistoryModal } from './PlayerHistoryModal'
@@ -135,13 +136,13 @@ export function TeamHistoryModal({ open, onClose, mode, party = emptyParty }: {
         <header className="rh-header rh-team-heading">
           <h2>对局详情</h2>
           <div className="rh-team-controls">
-            <select className="rh-team-mode" aria-label="队伍战绩范围" title={queues.find((queue) => queue.id === queueId)?.name || '全部模式'} value={queueId} onChange={(e) => setSelectedQueue(Number(e.target.value))}>
+            <HistorySelect className="rh-team-mode" aria-label="队伍战绩范围" value={queueId} onChangeValue={(value) => setSelectedQueue(Number(value))}>
               <option value={0}>全部模式</option>
               {queues.map((queue) => <option key={queue.id} value={queue.id}>{queue.name}</option>)}
-            </select>
-            <select className="rh-team-count" aria-label="队伍查询场次" value={count} onChange={(e) => setCount(Number(e.target.value))}>
+            </HistorySelect>
+            <HistorySelect className="rh-team-count" aria-label="队伍查询场次" value={count} onChangeValue={(value) => setCount(Number(value))}>
               {[20, 50, 100].map((n) => <option key={n} value={n}>每人 {n} 场</option>)}
-            </select>
+            </HistorySelect>
             <HistoryAssetTooltip title="刷新" compact asChild>
               <button type="button" className="rh-button rh-team-icon-button" aria-label="刷新" onClick={() => setRevision((n) => n + 1)}><span aria-hidden="true"><RefreshIcon /></span></button>
             </HistoryAssetTooltip>

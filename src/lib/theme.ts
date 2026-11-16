@@ -1,12 +1,13 @@
 import { store } from '@/lib/store'
 import '@/styles/Theme.css'
+import '@/styles/ClientSurfaces.css'
 
-export type SonaTheme = 'client' | 'slate'
+export type SonaTheme = 'client'
 
 export function initSonaTheme() {
-  const applyTheme = (theme: SonaTheme) => {
-    document.documentElement.dataset.sonaTheme = theme === 'slate' ? 'slate' : 'client'
+  const applyTheme = () => {
+    document.documentElement.dataset.sonaTheme = 'client'
   }
-  applyTheme(store.get('theme'))
+  applyTheme()
   return store.onChange('theme', applyTheme)
 }

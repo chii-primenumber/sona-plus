@@ -1,3 +1,4 @@
+import { selectOption } from './select-option.mjs'
 import assert from 'node:assert/strict'
 import path from 'node:path'
 
@@ -58,11 +59,13 @@ export async function verifyCompareAndTooltip(page, profile, games, out) {
     await compare.locator('.rh-compare-table').waitFor()
     assert.equal(await compare.locator('.rh-chart-hint').count(),0)
     assert.equal(await compare.getByRole('button',{name:'刷新',exact:true}).textContent(),'')
-    const candidate=await compare.getByLabel('选择对比玩家').locator('option').nth(2).getAttribute('value')
-    await compare.getByLabel('选择对比玩家').selectOption(candidate)
+    await compare.getByLabel('选择对比玩家').click()
+    const candidate=await page.getByRole('listbox').getByRole('option').nth(2).getAttribute('data-value')
+    await page.keyboard.press('Escape')
+    await selectOption(page,compare.getByLabel('选择对比玩家'),candidate)
     await compare.getByRole('button',{name:'刷新',exact:true}).click()
     await compare.locator('.rh-compare-table').waitFor()
-    assert.equal(await compare.getByLabel('选择对比玩家').inputValue(),candidate,'refresh preserves selected loaded candidate')
+    assert.equal(await compare.getByLabel('选择对比玩家').getAttribute('data-value'),candidate,'refresh preserves selected loaded candidate')
     const input=compare.getByRole('searchbox',{name:'输入对比玩家 ID',exact:true})
     await input.fill('手动玩家＃DEMO');await input.press('Enter')
     await compare.getByRole('columnheader',{name:'手动玩家#DEMO',exact:true}).waitFor()
@@ -86,7 +89,7 @@ export async function verifyCompareAndTooltip(page, profile, games, out) {
     await input.fill('手动玩家#DEMO');await input.press('Enter')
     await compare.getByRole('columnheader',{name:'手动玩家#DEMO',exact:true}).waitFor()
     await page.waitForTimeout(400)
-    assert.equal(await compare.getByLabel('选择对比玩家').inputValue(),manualId)
+    assert.equal(await compare.getByLabel('选择对比玩家').getAttribute('data-value'),manualId)
     await page.setViewportSize({width:700,height:720})
     assert.equal(await compare.evaluate((node)=>node.scrollWidth<=node.clientWidth+1),true)
     await page.setViewportSize({width:1450,height:940})

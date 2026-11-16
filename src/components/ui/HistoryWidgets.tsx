@@ -1,10 +1,11 @@
+import { useReportSkinNames } from '@/lib/history-skins'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { HistoryAssetTooltip } from './HistoryAssetTooltip'
 import { HistoryReplayButton } from './HistoryReplayButton'
 import { HistoryPlayerName } from './HistoryPlayerName'
 import { HistoryRuneDetails } from './HistoryRuneDetails'
 import { Modal } from './Modal'
-import { getChampIcon, getChampionById, getItemInfo, getSpellInfo, getPerkInfo, getPerkStyleIcon, getPerkStyleName, getAugmentInfo, getQueueName, getMapName } from '@/lib/assets'
+import { getChampIcon, getChampionById, getItemInfo, getSpellInfo, getPerkInfo, getPerkStyleIcon, getPerkStyleName, getPerkStyleDescription, normalizeDescription, getAugmentInfo, getQueueName, getMapName } from '@/lib/assets'
 import { championStats, durationText, finite, getOutcome, getPosition, matchBadges, metric, numberText, percentText, POSITION_NAMES, riotName, share, summarize, teamKey, type HistoryMatch } from '@/lib/history-model'
 import { rankText, type HistoryRank } from '@/lib/history-api'
 import { getRankedEmblem, getRankedMiniCrest } from '@/lib/ranked-assets'
@@ -21,7 +22,7 @@ export function HistoryImage({ src, label, className = '', nativeTooltip = true 
 }) {
   const [failed, setFailed] = useState('')
   const element = src && failed !== src
-    ? <img src={src} alt={label} className={className} loading="lazy" onError={() => setFailed(src)} />
+    ? <img src={src} alt={normalizeDescription(label)} className={className} loading="lazy" onError={() => setFailed(src)} />
     : <span className={`rh-image-fallback ${className}`}>{label.slice(0, 1) || '?'}</span>
   if (!nativeTooltip || !label) return element
   const [title, ...description] = label.split('\n')
@@ -178,7 +179,7 @@ export function RunesAndSpells({ player }: { player: SgpParticipantLol }) {
   return <><div className="rh-runes-spells">{spells.map((id, index) => { const info = getSpellInfo(id); return <HistoryImage key={`spell-${index}`} src={info.iconPath} label={`${info.name || `技能 ${id}`}\n${info.description}`} /> })}
     {Boolean((keystone ?? 0) > 0 || (secondary ?? 0) > 0) && <button type="button" className="rh-runes-detail-button" aria-label="查看本局符文详情" onClick={() => setShowDetails(true)}>
       {keystone ? <HistoryImage src={getPerkInfo(keystone).iconPath} label={`${getPerkInfo(keystone).name}\n${getPerkInfo(keystone).description}`} /> : null}
-      {secondary ? <HistoryImage src={getPerkStyleIcon(secondary)} label={getPerkStyleName(secondary)} /> : null}
+      {secondary ? <HistoryImage src={getPerkStyleIcon(secondary)} label={`${getPerkStyleName(secondary)}\n${getPerkStyleDescription(secondary)}`} /> : null}
     </button>}
   </div><HistoryRuneDetails open={showDetails} player={player} onClose={() => setShowDetails(false)} /></>
 }
@@ -290,7 +291,7 @@ function reportColumns(game: SgpGameSummaryLol, view: ReportView, show: (field: 
   const loadoutLabels = [equipment && '装备', spells && '符文', augments && '海克斯'].filter(Boolean)
   if (loadoutLabels.length) columns.push({
     key: 'loadout',
-    label: loadoutLabels.join(' / '),
+    label: '配装',
     render: (p) => <>
       {equipment && <Equipment player={p} dense />}
       {(spells || augments) && <div className="rh-report-loadout">
@@ -302,9 +303,9 @@ function reportColumns(game: SgpGameSummaryLol, view: ReportView, show: (field: 
 
   if (view === 'combat') {
     const sharedColumns: Array<[ReportField, string, ShareMetric]> = [
-      ['damage', '伤害 / 占比', 'totalDamageDealtToChampions'],
-      ['taken', '承伤 / 占比', 'totalDamageTaken'],
-      ['gold', '经济 / 占比', 'goldEarned'],
+      ['damage', '伤害', 'totalDamageDealtToChampions'],
+      ['taken', '承伤', 'totalDamageTaken'],
+      ['gold', '经济', 'goldEarned'],
     ]
     sharedColumns.forEach(([key, label, field]) => {
       if (!show(key)) return
@@ -321,11 +322,11 @@ function reportColumns(game: SgpGameSummaryLol, view: ReportView, show: (field: 
       teamKills != null && teamKills > 0 && finite(p.kills) != null && finite(p.assists) != null
         ? Math.min(1, (p.kills + p.assists) / teamKills) : teamKills === 0 ? 0 : null))
   } else {
-    add('heal', '治疗自身及友方', (p) => numberText(metric(p, 'totalHeal', game)))
-    add('allyHeal', '友方治疗 / 护盾', (p) => <>{numberText(metric(p, 'totalHealsOnTeammates', game))}<small>护盾 {numberText(metric(p, 'totalDamageShieldedOnTeammates', game))}</small></>)
+    add('heal', '治疗', (p) => numberText(metric(p, 'totalHeal', game)))
+    add('allyHeal', '友方支援', (p) => <>{numberText(metric(p, 'totalHealsOnTeammates', game))}<small>护盾 {numberText(metric(p, 'totalDamageShieldedOnTeammates', game))}</small></>)
     add('control', '控制 / 秒', (p) => numberText(metric(p, 'timeCCingOthers', game), 1))
-    add('vision', '视野 / 插眼 / 排眼', (p) => <>{numberText(metric(p, 'visionScore', game))}<small>{numberText(metric(p, 'wardsPlaced', game))} / {numberText(metric(p, 'wardsKilled', game))}</small></>)
-    add('objectives', '目标 / 防御塔伤害', (p) => <>{numberText(metric(p, 'damageDealtToObjectives', game))}<small>推塔 {numberText(metric(p, 'damageDealtToTurrets', game))}</small></>)
+    add('vision', '视野', (p) => <>{numberText(metric(p, 'visionScore', game))}<small>{numberText(metric(p, 'wardsPlaced', game))} / {numberText(metric(p, 'wardsKilled', game))}</small></>)
+    add('objectives', '目标', (p) => <>{numberText(metric(p, 'damageDealtToObjectives', game))}<small>推塔 {numberText(metric(p, 'damageDealtToTurrets', game))}</small></>)
   }
   const extra = PERFORMANCE_STATS.filter((stat)=>stat.sections.includes('report') && selectedData.includes(stat.key)
     && (view === 'support' ? stat.group === '治疗、控制与视野' : stat.group !== '治疗、控制与视野'))
@@ -340,6 +341,7 @@ function reportColumns(game: SgpGameSummaryLol, view: ReportView, show: (field: 
 }
 
 export function MatchReport({ game, focusPuuid, onInspect }: { game: SgpGameSummaryLol; focusPuuid: string; onInspect?: (puuid: string, name: string) => void }) {
+  const skinName = useReportSkinNames(game.json.participants)
   const [view, setView] = useState<ReportView>('combat')
   const hidden = useHistoryHiddenFields()
   const show = (field: ReportField) => isHistoryFieldVisible(hidden, 'report', field)
@@ -357,11 +359,11 @@ export function MatchReport({ game, focusPuuid, onInspect }: { game: SgpGameSumm
   })
   return <div className="rh-report">
     <div className="rh-report-toolbar">
-      <strong>{game.json.participants.length} 人详细战报</strong>
-      <span>本场数据 · 版本 {game.json.gameVersion || '未知'}</span>
+      <strong>战报 <b className="rh-report-count">{game.json.participants.length}<small> 人</small></b></strong>
+      <span>版本 <b>{game.json.gameVersion?.split('.').slice(0,2).join('.') || '—'}</b></span>
       <div className="rh-segment">
-        <button type="button" className={view === 'combat' ? 'is-active' : ''} onClick={() => setView('combat')}>战斗与经济</button>
-        <button type="button" className={view === 'support' ? 'is-active' : ''} onClick={() => setView('support')}>治疗、控制与视野</button>
+        <button type="button" className={view === 'combat' ? 'is-active' : ''} aria-label="战斗与经济" onClick={() => setView('combat')}>战斗</button>
+        <button type="button" className={view === 'support' ? 'is-active' : ''} aria-label="治疗、控制与视野" onClick={() => setView('support')}>支援</button>
       </div>
     </div>
     <div className="rh-table-scroll"><table className="rh-report-table"><thead><tr><th>玩家 / 英雄</th>
@@ -375,8 +377,8 @@ export function MatchReport({ game, focusPuuid, onInspect }: { game: SgpGameSumm
         const outcome = getOutcome(game, players[0])
         const teamName = game.json.gameMode === 'CHERRY' ? `小队 ${key}` : key === 100 ? '蓝色方' : key === 200 ? '红色方' : `队伍 ${key}`
         const result = outcome === 'win' ? '胜利' : outcome === 'loss' ? '失败' : outcome === 'remake' ? '重开' : '终止 / 未知'
-        return <TeamReportRows key={key} players={players} game={game} focusPuuid={focusPuuid} onInspect={onInspect} columns={columns} teamKills={teamKills}
-          label={`${teamName} · ${result} · ${kills} 击杀 · ${numberText(totalGold)} 金币${objective ? ` · 推塔 ${objective.tower?.kills ?? '—'} · 小龙 ${objective.dragon?.kills ?? '—'} · 大龙 ${objective.baron?.kills ?? '—'}` : ''}`} />
+        return <TeamReportRows key={key} players={players} game={game} focusPuuid={focusPuuid} onInspect={onInspect} columns={columns} teamKills={teamKills} skinName={skinName}
+          label={<><strong>{teamName} · {result}</strong><span><b>{kills}</b>击杀</span><span><b>{numberText(totalGold)}</b>金币</span>{objective && <>{[['塔',objective.tower?.kills],['小龙',objective.dragon?.kills],['大龙',objective.baron?.kills]].map(([label,value])=><span key={label}><b>{value ?? '—'}</b>{label}</span>)}</>}</>} />
       })}
     </tbody></table></div>
     {(damageLegend || economyLegend) && <div className="rh-report-legend">
@@ -387,15 +389,16 @@ export function MatchReport({ game, focusPuuid, onInspect }: { game: SgpGameSumm
   </div>
 }
 
-function TeamReportRows({ players, label, game, focusPuuid, onInspect, columns, teamKills }: {
-  players: SgpParticipantLol[]; label: string; game: SgpGameSummaryLol; focusPuuid: string
+function TeamReportRows({ players, label, game, focusPuuid, onInspect, columns, teamKills, skinName }: {
+  players: SgpParticipantLol[]; label: ReactNode; game: SgpGameSummaryLol; focusPuuid: string
   onInspect?: (puuid: string, name: string) => void; columns: ReportColumn[]; teamKills: number | null
+  skinName: (player: SgpParticipantLol) => string
 }) {
   return <><tr className="rh-team-divider"><td colSpan={columns.length + 1}>{label}</td></tr>
     {players.map((p, index) => <tr key={p.puuid || index} className={p.puuid === focusPuuid ? 'is-focus' : ''}>
       <td><button type="button" className="rh-player-link" disabled={!p.puuid || !onInspect} onClick={() => onInspect?.(p.puuid, riotName(p))}>
         <HistoryImage src={getChampIcon(p.championId)} label={championName(p.championId)} />
-        <span><strong><HistoryPlayerName name={riotName(p)} showTag /></strong><small>{championName(p.championId)} · {POSITION_NAMES[getPosition(p, game)]}</small></span>
+        <span><strong><HistoryPlayerName name={riotName(p)} showTag /></strong><small>{championName(p.championId)}{skinName(p) && <> · <span className="rh-recorded-skin">{skinName(p)}</span></>}</small></span>
       </button></td>
       {columns.map(({ key, render }) =>
         <td key={key} className={key === 'loadout' ? 'rh-report-loadout-cell' : undefined}>{render(p, teamKills)}</td>)}

@@ -1,3 +1,4 @@
+import { styleClientEntry } from '@/lib/client-entry-button'
 import { createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { TeamHistoryModal, type TeamHistoryMode } from '@/components/ui/TeamHistoryModal'
@@ -66,7 +67,7 @@ function injectButton() {
     if (button instanceof HTMLButtonElement) button.type = 'button'
     button.setAttribute(ATTR, mode)
     button.className = mode === 'bp' ? 'rh-team-entry' : 'rh-game-details-entry'
-    button.textContent = mode === 'bp' ? '对局信息' : '对局详情'
+    styleClientEntry(button, mode === 'bp' ? '对局信息' : '对局详情', 'team')
     button.setAttribute('role','button'); button.setAttribute('tabindex','0')
     button.title = mode === 'bp' ? '查看英雄选择阶段的己方队伍' : '查看本局双方队伍的近期战绩'
     button.addEventListener('click', (event) => { event.preventDefault(); event.stopPropagation(); showOverview() })

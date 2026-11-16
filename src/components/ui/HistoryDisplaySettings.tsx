@@ -75,7 +75,7 @@ export function HistoryDisplaySettings({ open, onClose, initialSection }: {
               <input type="checkbox" checked={selected.includes(stat.key)} onChange={(event)=>toggleData(stat.key,event.target.checked)} />{stat.label}
             </label>)}
           </div></section>)}
-          {original.length > 0 && <section className="rh-display-group"><h3>原有显示项目</h3><div className="rh-display-group-fields">{original.map(([field, label]) => (
+          {original.length > 0 && <section className="rh-display-group"><h3>默认显示项目</h3><div className="rh-display-group-fields">{original.map(([field, label]) => (
             <label key={field}>
               <input type="checkbox" checked={isHistoryFieldVisible(hidden, section, field)}
                 onChange={(event) => toggle(field, event.target.checked)} />

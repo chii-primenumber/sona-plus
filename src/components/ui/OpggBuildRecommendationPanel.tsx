@@ -1,5 +1,7 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { GameDescription } from './GameDescription'
+import { PositionIcon } from './PositionIcon'
 import { CareerBackdrop } from './CareerBackdrop'
 import { HistoryAssetTooltip } from './HistoryAssetTooltip'
 import { SonaSelect } from '@/components/ui/SonaSelect'
@@ -18,6 +20,7 @@ import {
   getPerkName,
   getPerkStyleIcon,
   getPerkStyleName,
+  getPerkStyleDescription,
   getQueueName,
   getQueue,
   getSpellIcon,
@@ -237,13 +240,15 @@ function PositionFilterSelect({ value, onChange, allowUnselected }: {
   return (
     <div className="sobp-position-filter" title={t('opgg.position.select')}>
       <SonaSelect
+        iconOnly
         value={normalizedValue}
         placeholder={allowUnselected ? '选择分路' : undefined}
         onChange={(nextValue) => onChange(nextValue as OpggPosition)}
-        options={OPGG_POSITION_VALUES.map((position) => ({
+        options={[...(allowUnselected ? [{value:'none',label:'选择分路',content:<PositionIcon />}]:[]), ...OPGG_POSITION_VALUES.map((position) => ({
           value: position,
           label: formatPositionText(position),
-        }))}
+          content: <PositionIcon position={({top:'TOP',jungle:'JUNGLE',mid:'MIDDLE',adc:'BOTTOM',support:'UTILITY'} as Record<string,string>)[position] || ''} />,
+        }))]}
       />
     </div>
   )
@@ -658,7 +663,7 @@ function RuneSection({ title, runes, championName, modeLabel }: { title: string;
                 </div>
                 <span className="sobp-rune-divider" />
                 <div className="sobp-rune-group">
-                  <BuildIcon src={getPerkStyleIcon(rune.secondary_page_id)} title={getPerkStyleName(rune.secondary_page_id)} size={24} round />
+                  <BuildIcon src={getPerkStyleIcon(rune.secondary_page_id)} title={getPerkStyleName(rune.secondary_page_id)} description={getPerkStyleDescription(rune.secondary_page_id)} size={24} round />
                   {rune.secondary_rune_ids.slice(0, 2).map((id) => {
                     const perk = getPerkInfo(id)
                     return <BuildIcon key={id} src={perk.iconPath || getPerkIcon(id)} title={perk.name || getPerkName(id)} description={perk.description} size={24} round />
@@ -829,7 +834,7 @@ function IconTooltip({
   const [mounted, setMounted] = useState(false)
   const [visible, setVisible] = useState(false)
   const [position, setPosition] = useState<TooltipPosition>({ left: 0, top: 0, arrowLeft: 0, placement: 'top', ready: false })
-  const parsedDescription = parseTooltipDescription(description)
+
   useEffect(() => () => { if (closeTimerRef.current != null) window.clearTimeout(closeTimerRef.current) }, [])
 
   useLayoutEffect(() => {
@@ -925,60 +930,12 @@ function IconTooltip({
                 : subtitle && <div className="sobp-official-tooltip-subtitle">{subtitle}</div>}
             </div>
           </div>
-          {(parsedDescription.stats.length > 0 || parsedDescription.effectTitle || parsedDescription.effectBody) && (
-            <div className="sobp-official-tooltip-desc">
-              {parsedDescription.stats.length > 0 && (
-                <div className="sobp-official-tooltip-stats">
-                  {parsedDescription.stats.map((line) => <div key={line}>{line}</div>)}
-                </div>
-              )}
-              {(parsedDescription.stats.length > 0 && (parsedDescription.effectTitle || parsedDescription.effectBody)) && (
-                <div className="sobp-official-tooltip-separator" />
-              )}
-              {parsedDescription.effectTitle && <div className="sobp-official-tooltip-effect-title">{parsedDescription.effectTitle}</div>}
-              {parsedDescription.effectBody && <div className="sobp-official-tooltip-effect-body">{parsedDescription.effectBody}</div>}
-            </div>
-          )}
+          {description && <div className="sobp-official-tooltip-desc"><GameDescription text={description} /></div>}
         </div>,
         document.body,
       )}
     </span>
   )
-}
-
-function parseTooltipDescription(description = ''): { stats: string[]; effectTitle: string; effectBody: string } {
-  const normalized = description.trim()
-  if (!normalized) return { stats: [], effectTitle: '', effectBody: '' }
-
-  const blocks = normalized
-    .split(/\n\s*\n/)
-    .map((block) => block.trim())
-    .filter(Boolean)
-
-  if (blocks.length >= 2) {
-    const stats = blocks[0].split('\n').map((line) => line.trim()).filter(Boolean)
-    const effectLines = blocks.slice(1).join('\n\n').split('\n').map((line) => line.trim()).filter(Boolean)
-    return {
-      stats,
-      effectTitle: effectLines[0] ?? '',
-      effectBody: effectLines.slice(1).join('\n'),
-    }
-  }
-
-  const lines = normalized.split('\n').map((line) => line.trim()).filter(Boolean)
-  if (lines.length >= 2 && lines.slice(0, -1).every(isStatLine)) {
-    return { stats: lines, effectTitle: '', effectBody: '' }
-  }
-
-  return {
-    stats: [],
-    effectTitle: lines.length > 1 ? lines[0] : '',
-    effectBody: lines.length > 1 ? lines.slice(1).join('\n') : lines[0] ?? '',
-  }
-}
-
-function isStatLine(line: string): boolean {
-  return /^[+\d]/.test(line)
 }
 
 function PanelMessage({ children, warning = false }: { children: ReactNode; warning?: boolean }) {

@@ -3,7 +3,7 @@
 .sona-select {
   position: relative;
   width: 100%;
-  z-index: 100;
+
 }
 
 /* 触发按钮 */
@@ -64,17 +64,19 @@
 
 /* 下拉列表 */
 .sona-select-dropdown {
-  position: absolute;
-  z-index: 50;
+  position: fixed;
+  z-index: 25000;
   width: max-content;
-  min-width: max(100%, 100px);
+  min-width: 120px;
+  max-width: calc(100vw - 20px);
+  border-radius: 5px;
   margin-top: 4px;
-  background: rgb(var(--sona-base-rgb));
+  background: rgb(var(--sona-base-rgb) / .88);
   border: 1px solid rgb(var(--sona-highlight-rgb));
   box-shadow:
     0 10px 30px rgba(0, 0, 0, 0.8),
     0 0 15px rgb(var(--sona-accent-rgb) / 0.15);
-  max-height: 200px;
+  max-height: 260px;
   overflow-y: auto;
 }
 
@@ -83,7 +85,7 @@
 }
 
 .sona-select-dropdown::-webkit-scrollbar-track {
-  background: rgb(var(--sona-base-rgb) / 0.8);
+  background: transparent;
 }
 
 .sona-select-dropdown::-webkit-scrollbar-thumb {
@@ -122,8 +124,8 @@
   white-space: nowrap;
 }
 
-.sona-select-option:hover {
-  background: rgb(var(--sona-raised-rgb));
+.sona-select-option:hover, .sona-select-option.is-highlighted {
+  background: rgb(var(--sona-accent-rgb) / .12);
   color: rgb(var(--sona-text-rgb));
 }
 
@@ -138,3 +140,14 @@
   background: rgb(var(--sona-accent-rgb) / 0.25);
   color: rgb(var(--sona-accent-rgb));
 }
+
+.sona-select-trigger:focus-visible { outline: 2px solid rgb(var(--sona-accent-rgb)); outline-offset: 2px; }
+.sona-select-trigger:disabled { opacity: .45; cursor: default; }
+.sona-select-option:disabled { opacity: .4; cursor: default; }
+.sona-select-option { gap: 16px; }
+.sona-select-option-label { flex-shrink: 1; overflow: hidden; text-overflow: ellipsis; }
+.sona-select--icons .sona-select-value, .sona-select-dropdown--icons .sona-select-option-label { justify-content: center; }
+.sona-select-dropdown--icons { display: grid; grid-template-columns: repeat(4, 38px); min-width: 0; padding: 5px; gap: 2px; }
+.sona-select-dropdown--icons .sona-select-option { width: 38px; height: 34px; justify-content: center; padding: 0; border-radius: 3px; }
+.sona-select-dropdown--icons .sona-select-option > span:last-child:not(.sona-select-option-label) { display: none; }
+@media (prefers-reduced-motion: reduce) { .sona-select-trigger, .sona-select-arrow, .sona-select-option { transition: none; } }

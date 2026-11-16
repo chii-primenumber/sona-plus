@@ -1,3 +1,4 @@
+import { styleClientEntry } from '@/lib/client-entry-button'
 import { createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { PlayerHistoryModal } from '@/components/ui/PlayerHistoryModal'
@@ -114,7 +115,7 @@ function injectProfileButton() {
     profileEntry = document.createElement('button')
     profileEntry.type = 'button'
     profileEntry.className = 'sona-profile-history-entry'
-    profileEntry.textContent = label
+    styleClientEntry(profileEntry, label, 'history')
     profileEntry.addEventListener('click', () => {
       const active = activeProfileScreen()
       const current = active && profileIdentity(active)

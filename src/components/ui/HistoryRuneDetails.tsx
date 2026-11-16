@@ -1,5 +1,6 @@
 import { Modal } from './Modal'
-import { getPerkInfo, getPerkStyleIcon, getPerkStyleName } from '@/lib/assets'
+import { getPerkInfo, getPerkStyleIcon, getPerkStyleName, getPerkStyleDescription } from '@/lib/assets'
+import { GameDescription } from './GameDescription'
 import { finite, numberText, riotName } from '@/lib/history-model'
 import type { SgpParticipantLol, SgpPerkSelection } from '@/types/sgp'
 
@@ -17,7 +18,7 @@ function RuneRow({ selection }: { selection: SgpPerkSelection }) {
   const info = getPerkInfo(selection.perk)
   return <article className="rh-rune-row">
     {info.iconPath && <img src={info.iconPath} alt="" />}
-    <div><strong>{info.name}</strong><p className="rh-muted">{info.description}</p>
+    <div><strong>{info.name}</strong><p className="rh-muted"><GameDescription text={info.description} /></p>
       <ul className="rh-rune-stats">{runeStats(selection).map((text, index) => <li key={index}>{text}</li>)}</ul>
     </div>
   </article>
@@ -36,6 +37,7 @@ export function HistoryRuneDetails({ open, player, onClose }: {
           <h3>{getPerkStyleIcon(style.style) && <img src={getPerkStyleIcon(style.style)} alt="" />}
             {index === 0 ? '主系' : '副系'} · {getPerkStyleName(style.style)}
           </h3>
+          {getPerkStyleDescription(style.style) && <p className="rh-muted"><GameDescription text={getPerkStyleDescription(style.style)} /></p>}
           {(style.selections ?? []).filter((rune) => rune.perk > 0).map((rune, index) =>
             <RuneRow key={`${rune.perk}-${index}`} selection={rune} />)}
         </section>)}

@@ -1,0 +1,62 @@
+/* Shared client surfaces. Cards remain simple alpha fills; no per-card blur or animation. */
+:root {
+  --sona-history-raised: rgb(var(--sona-raised-rgb) / .58);
+  --sona-history-header: rgb(var(--sona-base-rgb) / .5);
+}
+.rh-shell :is(.rh-mastery button,.rh-encounters button,.rh-chart-kpis > div,.rh-search-player-card) { background: rgb(var(--sona-base-rgb) / .4); }
+.rh-shell :is(.rh-mastery button,.rh-encounters button,.rh-chart-kpis > div) { border: 1px solid rgb(var(--sona-accent-rgb) / .12); }
+.rh-asset-tooltip { background: rgb(var(--sona-raised-rgb) / .97); }
+:root .rh-shell .rh-icon-button, :root .rh-shell .rh-team-icon-button, :root .sona-modal-close, :root .sobp-close, :root .sobp-fold-button, :root .sobp-expand-toggle {
+  display: inline-grid; place-items: center; width: 30px; height: 30px; min-width: 30px; padding: 0;
+  border-radius: 50%; border: 1px solid rgb(var(--sona-accent-rgb) / .65);
+  background: rgb(var(--sona-base-rgb) / .48); color: rgb(var(--sona-accent-rgb));
+  box-shadow: inset 0 0 0 1px rgb(var(--sona-accent-rgb) / .12);
+  transition: border-color 140ms ease, color 140ms ease, background-color 140ms ease;
+}
+:root .rh-shell .rh-icon-button:hover:enabled, :root .rh-shell .rh-team-icon-button:hover:enabled, :root .sona-modal-close:hover, :root .sobp-close:hover, :root .sobp-fold-button:hover, :root .sobp-expand-toggle:hover {
+  background: rgb(var(--sona-accent-rgb) / .13); border-color: rgb(var(--sona-pale-rgb)); color: rgb(var(--sona-pale-rgb));
+}
+.rh-icon-button:focus-visible, :root .sona-modal-close:focus-visible, :root .sobp-close:focus-visible, .sona-client-icon-button:focus-visible { outline: 2px solid rgb(var(--sona-accent-rgb)); outline-offset: 2px; }
+.rh-icon-button:disabled { opacity: .4; }
+.rh-load-more .rh-icon-button { width: 34px; height: 34px; }
+.sona-position-icon { display: inline-block; vertical-align: middle; flex-shrink: 0; color: rgb(var(--sona-accent-rgb)); }
+.rh-player-link small .sona-position-icon { width: 13px; height: 13px; margin-left: 3px; }
+.rh-select { width: auto; min-width: 0; flex: 0 1 auto; }
+.rh-select .sona-select-trigger { height: 29px; padding: 4px 9px; font: inherit; font-size: 11px; gap: 10px; border-radius: 4px; }
+.rh-sidebar label .rh-select { flex: 1; }
+.rh-local-filters .rh-select:first-child { width: 185px; }
+.rh-local-filters .rh-select { max-width: 240px; }
+.rh-select.sona-select--icons { width: 51px; }
+.rh-team-mode { max-width: 170px; }
+.rh-team-count { max-width: 110px; }
+.rh-compare-pick .rh-select { min-width: 180px; max-width: 260px; }
+.rh-search-region .rh-select { min-width: 140px; }
+.rh-report-toolbar > strong { color: rgb(var(--sona-accent-rgb)); }
+.rh-report-toolbar .rh-report-count { color: rgb(var(--sona-text-rgb)); margin-left: 7px; font-size: 11px; }
+.rh-report-toolbar > span { color: rgb(var(--sona-muted-rgb)); }
+.rh-report-toolbar > span b { color: rgb(var(--sona-text-rgb)); font-weight: 500; }
+.rh-report-table .rh-team-divider span { color: rgb(var(--sona-muted-rgb)); margin-right: 11px; white-space: nowrap; }
+.rh-report-table .rh-team-divider b { color: rgb(var(--sona-text-rgb)); margin-right: 3px; }
+.rh-report-table .rh-team-divider strong { color: rgb(var(--sona-accent-rgb)); margin-right: 11px; }
+.sona-client-icon-button, .game-in-progress-container .sona-client-icon-button, .bottom-right-buttons > .sona-client-icon-button {
+  display: inline-grid; place-items: center; width: 32px; min-width: 32px; max-width: 32px; height: 32px; min-height: 32px; padding: 0; box-sizing: border-box;
+  border: 2px solid rgb(var(--sona-accent-rgb) / .8); border-radius: 50%; color: rgb(var(--sona-pale-rgb));
+  background: rgb(var(--sona-raised-rgb) / .55); box-shadow: inset 0 0 0 1px rgb(var(--sona-base-rgb) / .9);
+  cursor: pointer; font-size: 0; line-height: 0; vertical-align: middle;
+}
+.sona-client-icon-button:hover { color: rgb(var(--sona-text-rgb)); border-color: rgb(var(--sona-pale-rgb)); background: rgb(var(--sona-accent-rgb) / .18); }
+.sona-client-icon-button svg { display: block; width: 17px; height: 17px; pointer-events: none; }
+.sona-profile-history-entry.sona-client-icon-button { right: 70px; }
+.game-in-progress-container .sona-client-icon-button { display: grid; margin-inline: auto; }
+.lock-in > .sona-client-icon-button { left: calc(50% - 150px); }
+@media (prefers-reduced-motion: reduce) { .rh-icon-button, :root .sona-modal-close, :root .sobp-close { transition: none; } }
+
+:root .rh-shell .rh-expand { border-radius: 50%; width: 30px; min-height: 30px; height: 30px; padding: 0; align-self: center; justify-self: center; background: rgb(var(--sona-base-rgb) / .48); border-color: rgb(var(--sona-accent-rgb) / .65); }
+
+.sobp .sobp-position-filter { width: 58px; min-width: 58px; }
+.sobp :is(.sobp-rank,.sobp-summary-card,.sobp-rune-card,.sobp-matchup) { background: rgb(var(--sona-base-rgb) / .55); }
+
+.rh-profile-header .rh-copy-id { display: inline-grid; place-items: center; width: 22px; height: 22px; border: 1px solid rgb(var(--sona-accent-rgb) / .4); border-radius: 50%; background: rgb(var(--sona-base-rgb) / .48); }
+
+/* Keep native in-game layout rules from stretching circular entry controls. */
+:root .game-in-progress-container .sona-client-icon-button { width: 32px; min-width: 32px; max-width: 32px; height: 32px; min-height: 32px; max-height: 32px; }

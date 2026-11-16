@@ -1,3 +1,4 @@
+import { selectOption } from './select-option.mjs'
 import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
 
@@ -93,7 +94,7 @@ export async function measurePerformance({ page, context, origin, output, versio
   })
   setLongHistory(true)
   await measure('personal-100-load', async () => {
-    await profile.getByLabel('每次加载场次').selectOption('100')
+    await selectOption(page,profile.getByLabel('每次加载场次'),'100')
     await profile.locator('[data-virtualized="true"]').waitFor()
     await page.waitForTimeout(150)
   })

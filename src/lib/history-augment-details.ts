@@ -1,5 +1,5 @@
 import { aramggApi } from '@/lib/aramgg-api'
-import { normalizeDescription } from '@/lib/assets'
+import { richDescription } from './game-description'
 import { deadline } from '@/lib/history-api'
 
 export type HistoryAugmentMode = 'mayhem' | 'arena'
@@ -32,7 +32,7 @@ export function historyAugmentRarity(rarity?: string) {
 }
 
 function cleanDescription(description: unknown) {
-  return typeof description === 'string' ? normalizeDescription(description.replace(/%i:[^%]+%/g, '')) : ''
+  return typeof description === 'string' ? richDescription(description.replace(/%i:[^%]+%/g, '')) : ''
 }
 
 function arenaDescription(augment: ArenaAugment) {

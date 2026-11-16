@@ -13,6 +13,7 @@ import { lcu } from '@/lib/lcu'
 import { logger } from '@/index'
 import type { GameQueue } from '@/types/lcu'
 import balanceData from '@/data/champion-balance.json'
+import { richDescription } from './game-description'
 
 /** 路径小写化，LCU 资源路径不区分大小写但统一小写更安全 */
 function normalizePath(raw: string): string {
@@ -40,7 +41,7 @@ export function normalizeDescription(raw: unknown): string {
 
 function pickDescription(source: Record<string, unknown>, keys: string[]): string {
   for (const key of keys) {
-    const description = normalizeDescription(source[key])
+    const description = richDescription(source[key])
     if (description) return description
   }
   return ''
@@ -61,6 +62,7 @@ const perkDescriptionMap = new Map<number, string>()
 const perkStatDescriptions = new Map<number, string[]>()
 const perkStyleMap = new Map<number, string>()
 const perkStyleNameMap = new Map<number, string>()
+const perkStyleDescriptionMap = new Map<number, string>()
 const augmentMap = new Map<number, { name: string; iconPath: string; rarity: string; description: string }>()
 const queueMap = new Map<number, GameQueue>()
 const mapDataMap = new Map<number, { id: number; name: string; gameModeName: string; [key: string]: unknown }>()
@@ -249,6 +251,7 @@ async function tryInit(attempt: number) {
   for (const style of perkStyles.styles) {
     if (style.id > 0 && style.iconPath) perkStyleMap.set(style.id, normalizePath(style.iconPath))
     if (style.id > 0 && style.name) perkStyleNameMap.set(style.id, style.name)
+    if (style.id > 0 && style.tooltip) perkStyleDescriptionMap.set(style.id, richDescription(style.tooltip))
   }
   for (const champ of champions) {
     if (champ.id > 0) {
@@ -266,7 +269,7 @@ async function tryInit(attempt: number) {
         name: augment.nameTRA || String(augment.id),
         iconPath: augment.augmentSmallIconPath ? normalizePath(augment.augmentSmallIconPath) : '',
         rarity: augment.rarity || '',
-        description: normalizeDescription(augment.summaryDescription),
+        description: richDescription(augment.summaryDescription),
       })
     }
   }
@@ -378,6 +381,11 @@ export function getPerkStyleIcon(id: number): string {
 /** 获取符文系名称 */
 export function getPerkStyleName(id: number): string {
   return perkStyleNameMap.get(id) ?? String(id)
+}
+
+/** Official style tooltip, already included in the client's perkstyles.json. */
+export function getPerkStyleDescription(id: number): string {
+  return perkStyleDescriptionMap.get(id) ?? ''
 }
 
 /** 获取强化符文 / Arena Augment 信息 */

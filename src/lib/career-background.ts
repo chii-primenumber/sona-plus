@@ -3,7 +3,7 @@ import { deadline } from './history-api'
 
 const PROFILE = '/lol-summoner/v1/current-summoner/summoner-profile'
 const CURRENT = '/lol-summoner/v1/current-summoner'
-interface SkinArt { id: number; uncenteredSplashPath?: string; splashPath?: string; questSkinInfo?: { tiers?: SkinArt[] } }
+interface SkinArt { id: number; centeredSplashPath?: string; uncenteredSplashPath?: string; splashPath?: string; questSkinInfo?: { tiers?: SkinArt[] } }
 const catalogs = new Map<number, { expires: number; paths: Map<number, string> }>()
 const listeners = new Set<() => void>()
 let image = '', account = '', skinId = 0, generation = 0
@@ -40,7 +40,7 @@ async function splashFor(id: number, signal: AbortSignal) {
   const champion = await json<{ skins?: SkinArt[] }>(`/lol-game-data/assets/v1/champions/${championId}.json`, signal)
   const paths = new Map<number, string>()
   const add = (skin: SkinArt) => {
-    const path = localSplash(skin.uncenteredSplashPath) || localSplash(skin.splashPath)
+    const path = localSplash(skin.splashPath) || localSplash(skin.centeredSplashPath) || localSplash(skin.uncenteredSplashPath)
     if (path) paths.set(skin.id, path)
     for (const tier of skin.questSkinInfo?.tiers ?? []) add(tier)
   }

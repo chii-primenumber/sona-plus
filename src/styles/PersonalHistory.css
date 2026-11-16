@@ -466,52 +466,52 @@
 .rh-champion-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 9px; }
 .rh-champion-controls label { display: flex; align-items: center; gap: 7px; color: var(--rh-muted); }
 
-/* Match the main menu's black/gold surfaces without changing the slate theme or layout. */
-:root:not([data-sona-theme="slate"]) .rh-shell { background: transparent; }
-:root:not([data-sona-theme="slate"]) .rh-shell :is(.rh-panel,.rh-rank-card,.rh-team-card,.rh-chart-card,.rh-search-player-card) {
+/* Match the main menu's black/gold surfaces. */
+.rh-shell { background: transparent; }
+.rh-shell :is(.rh-panel,.rh-rank-card,.rh-team-card,.rh-chart-card,.rh-search-player-card) {
   border-radius: 4px;
   background: rgb(var(--sona-base-rgb) / .4);
 }
-:root:not([data-sona-theme="slate"]) .rh-shell :is(.rh-panel h3,.rh-chart-head h3) { color: rgb(var(--sona-accent-rgb)); }
-:root:not([data-sona-theme="slate"]) .rh-shell :is(.rh-rank-card:hover:enabled,.rh-mastery button:hover,.rh-encounters button:hover,.rh-search-player-card:hover) {
+.rh-shell :is(.rh-panel h3,.rh-chart-head h3) { color: rgb(var(--sona-accent-rgb)); }
+.rh-shell :is(.rh-rank-card:hover:enabled,.rh-mastery button:hover,.rh-encounters button:hover,.rh-search-player-card:hover) {
   background: rgb(var(--sona-hover-rgb) / .8);
   border-color: rgb(var(--sona-accent-rgb) / .5);
 }
-:root:not([data-sona-theme="slate"]) .rh-shell :is(.rh-button,.rh-back,.rh-error button,.rh-segment button,.rh-score,.rh-summary-extra) {
+.rh-shell :is(.rh-button,.rh-back,.rh-error button,.rh-segment button,.rh-score,.rh-summary-extra) {
   background: rgb(var(--sona-raised-rgb) / .8);
   border-color: rgb(var(--sona-accent-rgb) / .25);
   border-radius: 3px;
   color: rgb(var(--sona-pale-rgb));
 }
-:root:not([data-sona-theme="slate"]) .rh-shell :is(.rh-button:hover:enabled,.rh-back:hover,.rh-error button:hover,.rh-segment button:hover) {
+.rh-shell :is(.rh-button:hover:enabled,.rh-back:hover,.rh-error button:hover,.rh-segment button:hover) {
   background: rgb(var(--sona-accent-rgb) / .15);
   border-color: rgb(var(--sona-accent-rgb));
   color: rgb(var(--sona-text-rgb));
 }
-:root:not([data-sona-theme="slate"]) .rh-shell select {
+.rh-shell select {
   background: rgb(var(--sona-base-rgb) / .6);
   border-color: rgb(var(--sona-border-rgb));
   border-radius: 3px;
 }
-:root:not([data-sona-theme="slate"]) :is(.rh-player-search input,.rh-search-shell input,.rh-display-search input) {
+:is(.rh-player-search input,.rh-search-shell input,.rh-display-search input) {
   background: rgb(var(--sona-base-rgb) / .6);
   border: 0;
   border-bottom: 2px solid rgb(var(--sona-border-rgb));
   border-radius: 0;
 }
-:root:not([data-sona-theme="slate"]) :is(.rh-player-search input,.rh-search-shell input,.rh-display-search input):focus {
+:is(.rh-player-search input,.rh-search-shell input,.rh-display-search input):focus {
   outline: none;
   border-bottom-color: rgb(var(--sona-accent-rgb));
   box-shadow: 0 2px 10px -2px rgb(var(--sona-accent-rgb) / .3);
 }
-:root:not([data-sona-theme="slate"]) .rh-main-toolbar { border-bottom-color: rgb(var(--sona-accent-rgb) / .2); }
-:root:not([data-sona-theme="slate"]) .rh-tabs button { color: rgb(var(--sona-muted-rgb)); }
-:root:not([data-sona-theme="slate"]) .rh-tabs button:is(.is-active,:hover) { color: rgb(var(--sona-accent-rgb)); }
-:root:not([data-sona-theme="slate"]) .rh-shell .rh-expand { background: rgb(var(--sona-raised-rgb) / .35); color: rgb(var(--sona-accent-rgb)); border-color: rgb(var(--sona-accent-rgb) / .2); }
-:root:not([data-sona-theme="slate"]) .rh-shell .rh-expand:hover { background: rgb(var(--sona-accent-rgb) / .12); }
+.rh-main-toolbar { border-bottom-color: rgb(var(--sona-accent-rgb) / .2); }
+.rh-tabs button { color: rgb(var(--sona-muted-rgb)); }
+.rh-tabs button:is(.is-active,:hover) { color: rgb(var(--sona-accent-rgb)); }
+.rh-shell .rh-expand { background: rgb(var(--sona-raised-rgb) / .35); color: rgb(var(--sona-accent-rgb)); border-color: rgb(var(--sona-accent-rgb) / .2); }
+.rh-shell .rh-expand:hover { background: rgb(var(--sona-accent-rgb) / .12); }
 /* Sticky table headers and body-level tooltips keep opaque surfaces for legibility. */
-:root:not([data-sona-theme="slate"]) :is(.rh-report-table,.rh-champion-table) th { background: rgb(var(--sona-base-rgb)); }
-:root:not([data-sona-theme="slate"]) .rh-team-divider td { color: rgb(var(--sona-pale-rgb)); }
+:is(.rh-report-table,.rh-champion-table) th { background: rgb(var(--sona-base-rgb)); }
+.rh-team-divider td { color: rgb(var(--sona-pale-rgb)); }
 
 /* Native-like history rows: neutral surfaces, with the outcome carried by clear text. */
 .rh-history-shell .rh-match {

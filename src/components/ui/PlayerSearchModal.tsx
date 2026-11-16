@@ -1,3 +1,4 @@
+import { HistorySelect } from './HistorySelect'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Modal } from './Modal'
 import { HistoryImage } from './HistoryWidgets'
@@ -121,10 +122,10 @@ function PlayerSearchContent({ initialQuery, onSelect }: {
           event.preventDefault()
           if (query.trim()) void startSearch(query, serverId)
         }}>
-          <select aria-label="搜索大区" value={serverId} onChange={(event) => changeServer(event.target.value)}>
+          <HistorySelect aria-label="搜索大区" value={serverId} onChangeValue={(value) => changeServer(value)}>
             <option value="">{currentServer ? `${historyServerName(currentServer)}（当前）` : '当前大区'}</option>
             {historySearchServers(currentServer).map((key) => <option key={key} value={key}>{historyServerName(key)}</option>)}
-          </select>
+          </HistorySelect>
           <input type="search" aria-label="玩家名称、编号或 PUUID" placeholder="名字 / 名字#编号 / PUUID" maxLength={120}
             value={query} autoFocus autoComplete="off" onChange={(event) => setQuery(event.target.value)} />
           <HistoryAssetTooltip title={state.pending ? '搜索中…' : '搜索'} compact asChild><button type="submit" className="rh-button rh-icon-button" aria-label={state.pending ? '搜索中…' : '搜索'} disabled={!query.trim() || state.pending}><SearchIcon /></button></HistoryAssetTooltip>

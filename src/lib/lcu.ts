@@ -1742,7 +1742,7 @@ class LCUManager {
   }
 
   /** 获取所有符文系样式（对应 perkPrimaryStyle / perkSubStyle） */
-  getPerkStyles(): Promise<{ styles: Array<{ id: number; iconPath: string; name: string }> }> {
+  getPerkStyles(): Promise<{ styles: Array<{ id: number; iconPath: string; name: string; tooltip?: string }> }> {
     return get('/lol-game-data/assets/v1/perkstyles.json')
   }
 

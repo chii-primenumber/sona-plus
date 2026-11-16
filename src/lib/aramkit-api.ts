@@ -1,6 +1,7 @@
 import { SharedRequests } from './shared-requests'
 import { deadline } from './history-api'
 import { sortRecommendationBuilds } from './recommendation-rates'
+import { escapeGameText, GAME_TEXT_COLORS } from './game-description'
 import type { BuildRecommendation, RecommendationAssets } from '@/components/ui/OpggBuildRecommendationPanel'
 import type { OpggItemBuild } from './opgg-api'
 
@@ -11,7 +12,7 @@ interface Later extends Stats { item: { id: number } }
 interface Route extends Stats { purchaseOrder: Array<{ id: number }>; boots?: Later[]; laterItems?: Later[] }
 interface Profile extends Stats { itemSet: Array<{ id: number }>; routes?: Route[] }
 interface Archetype extends Stats { key: string; profiles: Profile[] }
-interface Resource { name?: string; icon?: string; rarity?: string; priceTotal?: number; isFinal?: boolean; categories?: string[]; tooltip?: { blocks?: Array<{ spans?: Array<{ type: string; text?: string; label?: string }> }> } }
+interface Resource { name?: string; icon?: string; rarity?: string; priceTotal?: number; isFinal?: boolean; categories?: string[]; tooltip?: { blocks?: Array<{ role?: string; spans?: Array<{ type: string; text?: string; label?: string; semantic?: string }> }> } }
 export interface AramKitDetail {
   champion: { id: number; rank?: number; tier?: string; stats: Stats }
   summoners?: Array<Stats & { spells: Array<{ id: number }> }>
@@ -29,7 +30,19 @@ function asset(path?: string) {
   return path.startsWith(`${ARAMKIT_BASE}/assets/`) ? path : ''
 }
 function description(resource: Resource) {
-  return (resource.tooltip?.blocks ?? []).map((block) => (block.spans ?? []).map((span) => span.type === 'text' ? span.text ?? '' : span.label ?? '').join('')).filter(Boolean).join('\n')
+  return (resource.tooltip?.blocks ?? []).map((block) => {
+    const spans = block.spans ?? []
+    const statLine = spans.some((span) => span.semantic === 'stat') && spans.every((span) => !span.semantic || span.semantic === 'stat')
+    const text = spans.map((span, index) => {
+      // Leading stat icons repeat the label printed after the value; scaling icons inside effects do not.
+      if (statLine && index === 0 && span.type === 'icon') return ''
+      let text = escapeGameText(span.type === 'text' ? span.text ?? '' : span.label ?? '')
+      const semantic = span.semantic?.toLowerCase()
+      if (statLine && !semantic) text = text.replace(/([+−-]?\d+(?:[,.]\d+)*(?:%)?)/g, '<stat>$1</stat>')
+      return semantic && typeof GAME_TEXT_COLORS[semantic] === 'string' ? `<${semantic}>${text}</${semantic}>` : text
+    }).join('')
+    return block.role === 'rules' || block.role === 'flavorText' ? `<${block.role}>${text}</${block.role}>` : text
+  }).filter(Boolean).join('\n')
 }
 
 /** Mirrors ARAMKit's all/unfiltered dataset. No other-mode or other-provider fallback. */

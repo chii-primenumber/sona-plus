@@ -118,8 +118,7 @@ export function HistoryTrendPanel({ matches, games, puuid, system, score }: {
               </div>
               <p className="rh-chart-note">
                 {playerScoreLabel(system)} {formatPlayerScore(score ? score.score : NaN, system)}
-                {score ? ` / ${score.maxScore} 分（左侧评分卡同源）` : ''}。
-                雷达为 Sona 八维能力画像（0–100 内部分），与当前评分机制无关。
+                {score ? ` / ${score.maxScore} 分` : ''}。
               </p>
             </div>
           </div>
@@ -147,7 +146,6 @@ export function HistoryTrendPanel({ matches, games, puuid, system, score }: {
         </div>
         <p className="rh-chart-note">
           细线为逐场值，粗线为 5 场移动平均；底部色带为胜负（蓝胜 / 暗红负），空档表示重开或数据缺失。
-          评分趋势按当前机制逐场计算{system === 'akari' ? '，不含胜率项（胜负已由色带表达）' : ''}。
         </p>
       </section>
     </div>

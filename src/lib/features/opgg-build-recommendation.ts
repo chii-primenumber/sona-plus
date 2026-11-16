@@ -1,3 +1,4 @@
+import { styleClientEntry } from '@/lib/client-entry-button'
 /**
  * OP.GG 配装推荐基础框架
  *
@@ -1994,7 +1995,7 @@ function tryInjectInGameBuildButton(): boolean {
   btn.setAttribute(IN_GAME_BUILD_BUTTON_ATTR, 'true')
   btn.setAttribute('role','button')
   btn.setAttribute('tabindex','0')
-  btn.textContent = '配装推荐'
+  styleClientEntry(btn, '配装推荐', 'build')
   // 布局（display / 间距）统一在 inject.css 里处理，两个按钮的注入先后不固定
 
   btn.addEventListener('click', (event) => {
@@ -2051,7 +2052,7 @@ function tryInjectPreselectBuildButton(): boolean {
   button.setAttribute(PRESELECT_BUILD_BUTTON_ATTR, 'true')
   button.setAttribute('role', 'button')
   button.setAttribute('tabindex', '0')
-  button.textContent = '配装推荐'
+  styleClientEntry(button, '配装推荐', 'build')
   const open = async () => {
     try {
       if (currentContext.championId > 0) await openRecommendationPanel(button, { ...currentContext })

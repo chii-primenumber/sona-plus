@@ -33,7 +33,7 @@ export async function verifyAugmentSwitch(page, panel, out) {
   assert.equal(await track.getByRole('button',{name:'全部',exact:true}).getAttribute('aria-pressed'),'true')
   assert.equal(await track.locator('[aria-pressed="true"]').count(),1)
   const savedTheme=await page.evaluate(()=>document.documentElement.dataset.sonaTheme)
-  for(const theme of ['client','slate']) {
+  for(const theme of ['client']) {
     await page.evaluate(async(theme)=>(await import('/src/lib/store.ts')).store.set('theme',theme),theme)
     await panel.screenshot({path:path.join(out,`海克斯12个与滑动筛选_${theme}.png`)})
   }

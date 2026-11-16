@@ -9,7 +9,7 @@ export async function verifyCareerBackground(page) {
     metadata++
     const id=Number(new URL(route.request().url()).pathname.split('/').at(-1).replace('.json',''))
     if(id===157){slowStarted=true;await new Promise((resolve)=>setTimeout(resolve,300))}
-    return route.fulfill({json:{skins:[{id:id*1000+1,uncenteredSplashPath:`/lol-game-data/assets/qa-career/${id*1000+1}.jpg`,splashPath:'/lol-game-data/assets/qa-career/wrong.jpg',questSkinInfo:{tiers:[{id:id*1000+2,uncenteredSplashPath:`/lol-game-data/assets/qa-career/${id*1000+2}.jpg`}]}}]}}).catch(()=>{})
+    return route.fulfill({json:{skins:[{id:id*1000+1,splashPath:`/lol-game-data/assets/qa-career/${id*1000+1}.jpg`,uncenteredSplashPath:'/lol-game-data/assets/qa-career/group-full.jpg',questSkinInfo:{tiers:[{id:id*1000+2,uncenteredSplashPath:`/lol-game-data/assets/qa-career/${id*1000+2}.jpg`}]}}]}}).catch(()=>{})
   }
   await page.route('**'+PROFILE,routeProfile)
   await page.route('**'+CURRENT,routeCurrent)
@@ -54,7 +54,7 @@ export async function verifyCareerBackground(page) {
     const closedAt=profiles;skin=37001;await emitProfile();await page.waitForTimeout(80)
     assert.equal(profiles,closedAt,'closed surfaces have no background request callbacks')
     assert.equal(await page.evaluate(()=>qaCareer.getCareerBackground()),'')
-    console.log('[verify] signed-in career art: shared reads, quest tier, account isolation, stale cancellation, hidden/closed pause and failure retry passed')
+    console.log('[verify] signed-in career art: centered career art preferred over group splash, shared reads, quest tier, account isolation, stale cancellation, hidden/closed pause and failure retry passed')
   } finally {
     await page.evaluate(()=>{delete document.hidden;window.qaCareerStops?.forEach((stop)=>stop());delete window.qaCareerStops;delete window.qaCareer})
     await page.unroute('**'+PROFILE,routeProfile)
