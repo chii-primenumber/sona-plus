@@ -130,7 +130,7 @@ export function TeamHistoryModal({ open, onClose, mode, party = emptyParty }: {
   }
   const playerCount = snapshot?.teams.reduce((total, team) => total + team.members.length, 0) ?? 0
   return <>
-    <Modal open={open} onClose={onClose} width="min(1550px, 95vw)" height={mode === 'bp' ? 'min(560px, 92vh)' : 'min(900px, 92vh)'}>
+    <Modal open={open} onClose={onClose} careerBackground width="min(1550px, 95vw)" height={mode === 'bp' ? 'min(560px, 92vh)' : 'min(900px, 92vh)'}>
       <div className="rh-shell rh-team-shell" data-testid={mode === 'bp' ? 'bp-history' : 'game-history'}>
         <header className="rh-header rh-team-heading">
           <h2>对局详情</h2>
@@ -163,7 +163,7 @@ export function TeamHistoryModal({ open, onClose, mode, party = emptyParty }: {
       </div>
     </Modal>
     <HistoryDisplaySettings open={open && showSettings} onClose={() => setShowSettings(false)} initialSection="team" />
-    <Modal open={Boolean(open && selectedMatch)} onClose={() => setSelectedMatch(null)} width="min(1200px, 95vw)" height="min(720px, 88vh)">
+    <Modal open={Boolean(open && selectedMatch)} onClose={() => setSelectedMatch(null)} careerBackground width="min(1200px, 95vw)" height="min(720px, 88vh)">
       {selectedMatch && (
         <div className="rh-shell rh-team-match-detail">
           <h2>{getQueueName(selectedMatch.game.json.queueId)} · 单场战报</h2>

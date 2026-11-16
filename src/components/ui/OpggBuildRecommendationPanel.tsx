@@ -1,5 +1,6 @@
 import { createContext, useContext, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { CareerBackdrop } from './CareerBackdrop'
 import { HistoryAssetTooltip } from './HistoryAssetTooltip'
 import { SonaSelect } from '@/components/ui/SonaSelect'
 import tier1Icon from '@/../assets/tier/t1.svg'
@@ -135,7 +136,8 @@ export function OpggBuildRecommendationPanel({
   const showPositionFilter = !!koreanMatchups || supportsPositionFilter(context, recommendation)
 
   return (
-    <BaselineWinRate.Provider value={recommendation?.baselineWinRate ?? null}><div className="sobp">
+    <BaselineWinRate.Provider value={recommendation?.baselineWinRate ?? null}><div className="sobp sobp--career">
+      <CareerBackdrop />
       <div className="sobp-ambient" />
 
       <header className="sobp-titlebar">

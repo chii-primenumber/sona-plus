@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { lcu } from '@/lib/lcu'
+import { refreshCareerBackground } from '@/lib/career-background'
 import { logger } from '@/index'
 import '@/styles/ProfileBackgroundPicker.css'
 
@@ -234,6 +235,7 @@ export function ProfileBackgroundPicker({ open, onClose }: ProfileBackgroundPick
         body: JSON.stringify({ key: 'backgroundSkinId', value: skin.id }),
       })
       if (res.ok) {
+        refreshCareerBackground()
         setAppliedId(skin.id)
         setStatusMsg(`✅ 已应用 [${skin.name}]`)
         logger.info('[ProfileBg] 背景已设置为 %s (id=%d)', skin.name, skin.id)

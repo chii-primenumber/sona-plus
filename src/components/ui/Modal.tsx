@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type MouseEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { CareerBackdrop } from './CareerBackdrop'
 import '@/styles/Modal.css'
 import { store } from '@/lib/store'
 import { modalStack, notifyModalStack, startParticleAnimation } from '@/lib/particle-animation'
@@ -25,6 +26,7 @@ export interface ModalProps {
   maskClosable?: boolean
   /** 是否显示关闭按钮，默认 true */
   closable?: boolean
+  careerBackground?: boolean
 }
 
 export function Modal({
@@ -35,6 +37,7 @@ export function Modal({
   height = 520,
   maskClosable = true,
   closable = true,
+  careerBackground = false,
 }: ModalProps) {
   const dynamicEffects = useSyncExternalStore(subscribeEffects, getEffects)
   const dialogRef = useRef<HTMLDivElement>(null)
@@ -151,7 +154,7 @@ export function Modal({
   }
 
   const overlayClass = `sona-modal-overlay${closing ? ' sona-modal-closing' : ''}`
-  const dialogClass = `sona-modal-dialog${closing ? ' sona-modal-closing' : ''}`
+  const dialogClass = `sona-modal-dialog${careerBackground ? ' sona-modal-dialog--career' : ''}${closing ? ' sona-modal-closing' : ''}`
 
   const handleOverlayMouseDown = (e: MouseEvent<HTMLDivElement>) => {
     mouseDownOnOverlayRef.current = e.target === e.currentTarget
@@ -183,6 +186,7 @@ export function Modal({
         style={style}
         onClick={(e) => e.stopPropagation()}
       >
+        {careerBackground && <CareerBackdrop active={open && !closing} />}
         {/* Canvas 粒子背景 */}
         <canvas
           ref={canvasRef}

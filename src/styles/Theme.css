@@ -10,12 +10,12 @@
   --sona-border-rgb: 60 46 22;
   --sona-highlight-rgb: 120 90 40;
   --sona-pale-rgb: 205 190 145;
-  --sona-history-panel: #0a151e;
-  --sona-history-raised: #111e28;
-  --sona-history-hover: #1c2b35;
-  --sona-history-header: #101d27;
-  --sona-history-line: #3c3528;
-  --sona-history-focus: #243039;
+  --sona-history-panel: rgb(var(--sona-base-rgb) / .4);
+  --sona-history-raised: rgb(var(--sona-raised-rgb));
+  --sona-history-hover: rgb(var(--sona-hover-rgb) / .8);
+  --sona-history-header: rgb(var(--sona-base-rgb) / .6);
+  --sona-history-line: rgb(var(--sona-border-rgb) / .6);
+  --sona-history-focus: rgb(var(--sona-accent-rgb) / .1);
   --sona-history-win: #0d1a21;
   --sona-history-loss: #1d181a;
   --sona-history-blue: #81a6af;

@@ -41,7 +41,7 @@ export function PlayerHistoryModal({ open, onClose, puuid, playerName, queueId }
     setNavigation((nav) => ({ ...nav, current: player, trail: [...nav.trail, nav.current].slice(-20) }))
   }, [current.puuid, current.serverId])
   const viewKey = `${getHistoryEpoch()}:${current.serverId ?? ''}:${current.puuid}`
-  return <Modal open={open} onClose={onClose} width="min(1320px, 95vw)" height="min(940px, 92vh)">
+  return <Modal open={open} onClose={onClose} careerBackground width="min(1320px, 95vw)" height="min(940px, 92vh)">
     {current.puuid && <PlayerHistoryContent key={viewKey} open={open} target={current}
       savedView={views.current.get(viewKey)} rememberView={(view) => {
         views.current.delete(viewKey); views.current.set(viewKey, view)

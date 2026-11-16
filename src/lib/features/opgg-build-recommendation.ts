@@ -1997,7 +1997,7 @@ async function openRecommendationPanel(anchor: HTMLElement, contextOverride?: Re
   view.style.cssText = [
     'width:1200px',
     'max-width:calc(100vw - 40px)',
-    'background:#010a13',
+    'background:transparent',
     'direction:ltr',
     'color:#a09b8c',
     'font-family:var(--font-body), -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif',

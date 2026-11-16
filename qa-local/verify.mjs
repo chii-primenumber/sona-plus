@@ -5,6 +5,8 @@ import path from 'node:path'
 import fs from 'node:fs/promises'
 import { execFileSync } from 'node:child_process'
 import { verifyUiOptimizations } from './verify-ui-optimizations.mjs'
+import { verifyCareerBackground } from './verify-career-background.mjs'
+import { verifyHistoryTheme } from './verify-history-theme.mjs'
 import { verifyAugmentSwitch } from './verify-augment-switch.mjs'
 import { verifyMayhemDeltas } from './verify-mayhem-deltas.mjs'
 import { verifyRecommendationLifecycle } from './verify-recommendation-lifecycle.mjs'
@@ -19,6 +21,7 @@ const nativeRankFiles = new Map(await Promise.all([
   'iron.svg','bronze.svg','silver.svg','gold.svg','platinum.svg','emerald.svg','diamond.svg',
   'master.svg','grandmaster.svg','challenger.svg','unranked.svg','unranked.png',
 ].map(async (name) => [name,await fs.readFile(path.join(base,'qa-local','fixtures','ranked',name))])))
+const careerSplash = await fs.readFile(path.join(base,'qa-local/fixtures/career/Ahri_0.jpg'))
 const names = ['练习星轨', '薄荷汽水', '雨后回声', '微光纸船', '海盐风铃', '白昼拾荒', '云端烟火', '满月航线', '橘子信笺', '栖木午后']
 const champions = [[16,'索拉卡'],[350,'悠米'],[117,'璐璐'],[37,'娑娜'],[267,'娜美'],[103,'阿狸'],[99,'拉克丝'],[22,'艾希'],[51,'凯特琳'],[64,'李青'],[157,'亚索'],[222,'金克丝']]
 const positions = ['TOP','JUNGLE','MIDDLE','BOTTOM','UTILITY']
@@ -201,6 +204,9 @@ try {
     if (p==='/fe/lol-shared-components/unranked.png') return route.fulfill({contentType:'image/png',body:nativeRankFiles.get('unranked.png')}).catch(()=>{})
     if (p.includes('/ranked-mini-crests/') && nativeRankFiles.has(p.split('/').at(-1))) return route.fulfill({contentType:'image/svg+xml',body:nativeRankFiles.get(p.split('/').at(-1))}).catch(()=>{})
     if (p.startsWith('/qa-art/')||p.includes('/champion-icons/')||p.includes('/profile-icons/')||p.includes('/ranked-mini-crests/')||p.startsWith('/fe/lol-shared-components/')) return route.fulfill({contentType:'image/svg+xml',body:image(p)}).catch(()=>{})
+    if (p === '/lol-summoner/v1/current-summoner/summoner-profile') return json({backgroundSkinId:103000})
+    if (p === '/lol-game-data/assets/v1/champions/103.json') return json({id:103,skins:[{id:103000,uncenteredSplashPath:'/lol-game-data/assets/qa-career/103000.jpg'}]})
+    if (p.startsWith('/lol-game-data/assets/qa-career/')) return route.fulfill({contentType:'image/jpeg',body:careerSplash}).catch(()=>{})
     if (p.endsWith('/champion-summary.json')) return json([...champions,[154,'扎克'],[83,'约里克']].map(([id,name])=>({id,name:'英雄',description:name,alias:`Preview${id}`,squarePortraitPath:`/qa-art/champion-${id}.svg`})))
     if (p.endsWith('/items.json')) return json(mockIcons(items,'item'))
     if (p.endsWith('/summoner-spells.json')) return json(mockIcons([[4,'闪现'],[7,'治疗'],[32,'雪球']],'spell'))
@@ -255,7 +261,32 @@ try {
     return route.continue()
   })
   await page.goto(`${origin}/qa-local/index.html`)
-  if (process.env.SONA_LIFECYCLE_ONLY) {
+  if (process.env.SONA_CAREER_ONLY) {
+    await verifyCareerBackground(page)
+    await page.getByPlaceholder(/名字#Tag/).fill('练习星轨#DEMO')
+    await page.getByRole('button',{name:'查询战绩',exact:true}).click()
+    const profile=page.getByTestId('player-history')
+    await profile.locator('.rh-match').first().waitFor()
+    await verifyHistoryTheme(page,profile,out)
+    await page.keyboard.press('Escape');await profile.waitFor({state:'hidden'})
+    await page.getByRole('button',{name:'模拟进游戏',exact:true}).click()
+    await page.locator('[data-sona-team-history="game"]').click()
+    const team=page.getByTestId('game-history')
+    await team.locator('.rh-team-card-stats').nth(9).waitFor()
+    await page.locator('.sona-modal-dialog--career .sona-career-backdrop img.is-loaded').last().waitFor()
+    await team.screenshot({path:path.join(out,'对局详情_生涯原画半透明_模拟.png')})
+    await page.keyboard.press('Escape');await team.waitFor({state:'hidden'})
+    await page.evaluate(async()=>{
+      const {openOpggBuildRecommendationDebugPanel}=await import('/src/lib/features/opgg-build-recommendation.ts')
+      await openOpggBuildRecommendationDebugPanel(document.querySelector('.qa-toolbar'),157,{queueId:440,gameMode:'CLASSIC',position:'jungle'})
+    })
+    const builds=page.locator('#sona-opgg-build-panel .sobp')
+    await builds.locator('.sobp-core-builds .sobp-row').first().waitFor()
+    await builds.locator('.sona-career-backdrop img.is-loaded').waitFor()
+    await builds.screenshot({path:path.join(out,'配装推荐_生涯原画半透明_模拟.png')})
+    await builds.locator('.sobp-close').click()
+    assert.equal(errors.length,0,errors.join('\n'))
+  } else if (process.env.SONA_LIFECYCLE_ONLY) {
     await verifyRecommendationLifecycle(page)
   } else if (process.env.SONA_PERF_OUTPUT) {
     await measurePerformance({page, context, origin, version, output:process.env.SONA_PERF_OUTPUT, counts, errors, setLongHistory(value) { longHistory=value }})
@@ -622,6 +653,7 @@ try {
   const encounterIcons = await profileView.locator('.rh-encounters img').evaluateAll((images) => images.map((img) => img.getAttribute('src')))
   assert.equal(encounterIcons.length, 9)
   assert.ok(encounterIcons.every((src) => src.includes('/profile-icons/')))
+  await verifyHistoryTheme(page,profileView,out)
   await profileView.screenshot({path:path.join(out,'个人战绩_模拟数据.png')})
   const firstMatch = profileView.locator('.rh-match').first()
   assert.equal(await firstMatch.getByRole('button',{name:'下载回放',exact:true}).textContent(),'')
@@ -1114,6 +1146,8 @@ try {
   await ingameBuild.click()
   const ingameBuildView=page.locator('.sona-opgg-modal-content').filter({has:page.locator('.sobp-overview')})
   await ingameBuildView.locator('.sobp-pick-rate').first().waitFor()
+  await ingameBuildView.locator('.sona-career-backdrop img.is-loaded').waitFor()
+  assert.equal(await ingameBuildView.locator('.sobp-body').evaluate((node)=>getComputedStyle(node).backgroundColor),'rgba(0, 0, 0, 0)')
   const ingameCloseBox=await ingameBuildView.locator('.sobp-close').boundingBox()
   assert.ok(ingameCloseBox.x>=0 && ingameCloseBox.x+ingameCloseBox.width<=1450 && ingameCloseBox.y>=0)
   await ingameBuildView.screenshot({path:path.join(out,'游戏中配装推荐_模拟数据.png')})
@@ -1126,6 +1160,14 @@ try {
   assert.equal(await gameView.locator('.rh-team-blue .rh-team-card').count(),5)
   assert.equal(await gameView.locator('.rh-team-red .rh-team-card').count(),5)
   await gameView.locator('.rh-team-card-stats').nth(9).waitFor()
+  await page.locator('.sona-modal-dialog--career .sona-career-backdrop img.is-loaded').last().waitFor()
+  const teamSkin=await gameView.evaluate((node)=>({
+    win:getComputedStyle(node.querySelector('.rh-team-match-win')).backgroundColor,
+    loss:getComputedStyle(node.querySelector('.rh-team-match-loss')).backgroundColor,
+    blue:getComputedStyle(node.querySelector('.rh-team-blue .rh-team-dot')).backgroundColor,
+    red:getComputedStyle(node.querySelector('.rh-team-red .rh-team-dot')).backgroundColor,
+  }))
+  assert.deepEqual(teamSkin,{win:'rgb(49, 64, 111)',loss:'rgb(95, 49, 66)',blue:'rgb(84, 189, 255)',red:'rgb(242, 123, 147)'})
   await gameView.getByText('组队 A',{exact:true}).first().waitFor()
   await page.mouse.move(4,4)
   await gameView.screenshot({path:path.join(out,'游戏后双方总览_模拟数据.png')})
@@ -1323,6 +1365,7 @@ try {
   await page.evaluate(()=>{window.qaMayhemRoot.unmount();document.getElementById('qa-mayhem-recommendations').remove()})
   await verifyMayhemDeltas(page)
   await verifyRecommendationLifecycle(page)
+  await verifyCareerBackground(page)
   assert.equal(errors.length,0,errors.join('\n'))
   assert.equal(writes.length,0,writes.join('\n'))
   console.log(JSON.stringify({result:'passed', checks:['current, peak and previous ranks', 'split, copyable and hover-only Riot IDs', 'single-button replay download and playback', 'icon-only report expansion', 'segmented bars and missing breakdown', 'equipment and Mayhem tooltips', 'display settings for team, personal and report', 'shared and persisted plugin theme', 'name, Riot ID and PUUID search', 'friends, visits and region reference', 'cross-region profile, ranks and matches', 'native locked enemy row with nonstandard portrait path', 'ranked and custom draft gating', 'Korean lane/tier queries and no-data state', 'champion filter toggle and damage badge', 'personal history', 'player search and return', 'encounter profile icons', 'filters and pagination', 'native fallback', 'BP party colors and game ten', 'recent match detail', 'transparent nested scrollbars', 'nested Escape', 'phase exit', '1000px layout', 'native search clearance and exclusive profile entry', 'history and postgame context menus', 'navigation preserves filters, pagination, expansion and scroll without refetch', 'champion sorting and minimum samples', 'variable-height virtual history', 'batched and scoped native scans', 'visible-layer particles and hidden-page pause', 'persisted effects switch', 'no unexpected writes or page errors'], requests:counts.length, blockedUnrelatedExternal:[...new Set(external)]},null,2))

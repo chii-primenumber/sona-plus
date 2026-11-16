@@ -1076,6 +1076,16 @@
 .sobp-last-item .sobp-stat { align-items: flex-start; }
 @media (prefers-reduced-motion: reduce) { .sobp-section-reveal, .sobp-augment-switch-thumb, .sobp-augment-switch button { transition: none; } }
 
+/* Share the history/main-menu surfaces over the signed-in account's career artwork. */
+.sobp--career { isolation: isolate; background: rgb(var(--sona-base-rgb) / .78); border-color: rgb(var(--sona-accent-rgb) / .35); border-radius: 4px; }
+.sobp--career .sobp-ambient { display: none; }
+.sobp--career .sobp-body { background: transparent; }
+.sobp--career .sobp-titlebar { background: rgb(var(--sona-base-rgb) / .35); border-bottom-color: rgb(var(--sona-accent-rgb) / .2); }
+.sobp--career :is(.sobp-section-card,.sobp-equipment-card,.sobp-last-item,.sobp-augment) { background: rgb(var(--sona-base-rgb) / .4); border-color: rgb(var(--sona-border-rgb) / .6); border-radius: 4px; }
+.sobp--career .sobp-row { background: rgb(var(--sona-base-rgb) / .25); }
+.sobp--career .sobp-body::-webkit-scrollbar-track { background: transparent; }
+.sona-opgg-modal-content .sobp--career { border-radius: 0; }
+
 .sobp-compact-equipment { margin-top: 10px; }
 .sobp-equipment-cards { display: grid; grid-template-columns: repeat(auto-fill,minmax(min(100%,250px),1fr)); gap: 5px; }
 .sobp-equipment-card { position: relative; display: flex; align-items: center; gap: 7px; min-width: 0; padding: 10px 6px 5px; border: 1px solid rgb(var(--sona-accent-rgb)/.12); border-radius: 3px; background: rgb(var(--sona-base-rgb)/.6); }
