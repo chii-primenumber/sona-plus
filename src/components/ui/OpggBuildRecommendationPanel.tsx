@@ -1,5 +1,6 @@
 import { createContext, useContext, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { HistoryAssetTooltip } from './HistoryAssetTooltip'
 import { SonaSelect } from '@/components/ui/SonaSelect'
 import tier1Icon from '@/../assets/tier/t1.svg'
 import tier2Icon from '@/../assets/tier/t2.svg'
@@ -16,6 +17,7 @@ import {
   getPerkStyleIcon,
   getPerkStyleName,
   getQueueName,
+  getQueue,
   getSpellIcon,
   getSpellInfo,
   getSpellName,
@@ -129,6 +131,7 @@ export function OpggBuildRecommendationPanel({
     : [queueText, formatPositionText(positionText)].filter(Boolean).join(' · ')
   const mayhem = isKiwiMode(context) || context.queueId === 2400
   const showAugments = mayhem || recommendation?.mode === 'arena'
+  const showEarlyItems = mayhem || recommendation?.mode === 'ranked' || getQueue(context.queueId)?.mapId === 11
   const showPositionFilter = !!koreanMatchups || supportsPositionFilter(context, recommendation)
 
   return (
@@ -177,6 +180,10 @@ export function OpggBuildRecommendationPanel({
               {!mayhem && <RuneSection title={t('opgg.section.runes')} runes={recommendation?.runePages} championName={championName} modeLabel={recommendation?.modeLabel || queueText} />}
               <SpellSection title={t('opgg.section.spells')} builds={recommendation?.summonerSpells} limit={MAX_RECOMMENDATION_ROWS} />
             </div>
+            {showEarlyItems && <>
+              <CompactEquipmentSection title="出门装推荐" builds={recommendation?.starterItems} />
+              <CompactEquipmentSection title="鞋子推荐" builds={recommendation?.boots} />
+            </>}
               <div className="sobp-core-builds" data-testid="three-item-builds"><ItemSection title="核心出装" builds={recommendation?.coreItems?.filter((build) => build.ids.length === 3 && build.ids.every((id) => Number.isInteger(id) && id > 0) && new Set(build.ids).size === 3)} itemLimit={3} /></div>
             <div className="sobp-trend-wrap">
               <LastItemTrendSection title="后续成装推荐" builds={recommendation?.lastItems} />
@@ -377,28 +384,49 @@ function getSummaryKind(value: string): SummaryKind {
   return 'default'
 }
 
-function Section({ title, children, empty = false, emptyText }: { title: string; children: ReactNode; empty?: boolean; emptyText?: string }) {
+function Section({ title, children, empty = false, emptyText, count, toolbar }: {
+  title: string; children: ReactNode | ((limit: number) => ReactNode); empty?: boolean; emptyText?: string; count?: number; toolbar?: ReactNode
+}) {
   const { t } = useI18n()
-  return (
-    <section className="sobp-section">
-      <h3 className="sobp-section-title">
-        <span />
-        {title}
-      </h3>
-      <div className="sobp-section-card">
-      {empty ? <div className="sobp-empty">{emptyText ?? t('common.noData')}</div> : children}
+  const [mode,setMode]=useState<'hidden'|'partial'|'all'>('partial')
+  const content=useRef<HTMLDivElement>(null)
+  const [height,setHeight]=useState<number>()
+  const collapsible=count != null && count>0
+  const large=(count ?? 0)>8
+  const closed=collapsible && mode==='hidden'
+  const limit=large && mode!=='all' ? 8 : Infinity
+  useLayoutEffect(()=>{
+    if (!collapsible || !content.current) return
+    const node=content.current
+    const measure=()=>{const next=node.getBoundingClientRect().height;setHeight((old)=>old!=null&&Math.abs(old-next)<.5?old:next)}
+    const observer=new ResizeObserver(measure);observer.observe(node);measure()
+    return ()=>observer.disconnect()
+  },[collapsible])
+  const action=(label:string,onClick:()=>void,path:string)=> <HistoryAssetTooltip title={label} compact asChild>
+    <button type="button" className="sobp-fold-button" aria-label={`${title}：${label}`} aria-expanded={label==='收起'?true:label==='展开'?false:undefined} onClick={onClick}><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d={path}/></svg></button>
+  </HistoryAssetTooltip>
+  return <section className={`sobp-section${collapsible?' sobp-section-collapsible':''}`} data-section-title={title}>
+    <h3 className="sobp-section-title"><span />{title}
+      {collapsible && <div className="sobp-section-actions">
+        {large && action(mode==='all'?'部分显示':'展开全部',()=>setMode(mode==='all'?'partial':'all'),mode==='all'?'M3 5h10M3 8h7M3 11h4':'m3 3 5 4 5-4m-10 6 5 4 5-4')}
+        {action(closed?'展开':'收起',()=>setMode(closed?(large?'partial':'all'):'hidden'),closed?'m3 6 5 5 5-5':'m3 10 5-5 5 5')}
+      </div>}
+    </h3>
+    <div className="sobp-section-reveal" style={collapsible?{height:closed?0:height??'auto'}:undefined} aria-hidden={closed || undefined} inert={closed || undefined}>
+      <div ref={content}>
+        <div className="sobp-section-card">{toolbar}{empty?<div className="sobp-empty">{emptyText??t('common.noData')}</div>:typeof children==='function'?children(limit):children}</div>
       </div>
-    </section>
-  )
+    </div>
+  </section>
 }
 
 function ItemSection({ title, builds, itemLimit }: { title: string; builds?: OpggItemBuild[]; itemLimit: number }) {
-  const visibleBuilds = builds?.slice(0, MAX_RECOMMENDATION_ROWS) ?? []
+  const visibleBuilds = builds ?? []
   const maxRate = getMaxPickRate(visibleBuilds, 0.15)
 
   return (
-    <Section title={title} empty={visibleBuilds.length === 0}>
-      {visibleBuilds.map((build, index) => (
+    <Section title={title} empty={visibleBuilds.length === 0} count={visibleBuilds.length}>
+      {(limit)=>visibleBuilds.slice(0,limit).map((build, index) => (
         <div className="sobp-row" key={`${index}-${build.ids.join('-')}`}>
           <div className="sobp-row-main">
             <RankBadge rank={index + 1} />
@@ -421,6 +449,19 @@ function ItemSection({ title, builds, itemLimit }: { title: string; builds?: Opg
   )
 }
 
+function CompactEquipmentSection({title,builds}:{title:string;builds?:OpggItemBuild[]}) {
+  const entries=(builds ?? []).filter((build)=>build.ids.length>0 && build.ids.every((id)=>Number.isInteger(id) && id>0))
+  return <div className="sobp-compact-equipment">
+    <Section title={title} count={entries.length} empty={!entries.length}>
+      {(limit)=><div className="sobp-equipment-cards">{entries.slice(0,limit).map((build,index)=><div className="sobp-equipment-card" key={`${index}-${build.ids.join('-')}`}>
+        <small className="sobp-equipment-rank">#{index+1}</small>
+        <div className="sobp-equipment-icons">{build.ids.map((id,i)=>{const item=getItemInfo(id);return <BuildIcon key={`${id}-${i}`} src={item.iconPath} title={item.name} description={item.description} price={item.price} size={26} />})}</div>
+        <RecommendationStats build={build} maxRate={1} />
+      </div>)}</div>}
+    </Section>
+  </div>
+}
+
 function LastItemTrendSection({ title, builds }: { title: string; builds?: OpggItemBuild[] }) {
   const visibleItems = (builds ?? [])
     .filter((build) => build.ids.length === 1)
@@ -430,12 +471,12 @@ function LastItemTrendSection({ title, builds }: { title: string; builds?: OpggI
       pickRate: build.pick_rate,
       winRate: getBuildWinRate(build),
     })))
-    .slice(0, 18)
+
 
   return (
-    <Section title={title} empty={visibleItems.length === 0}>
-      <div className="sobp-last-items">
-        {visibleItems.map((entry, index) => {
+    <Section title={title} empty={visibleItems.length === 0} count={visibleItems.length}>
+      {(limit)=><div className="sobp-last-items">
+        {visibleItems.slice(0,limit).map((entry, index) => {
           const item = getItemInfo(entry.id)
           return (
             <div className="sobp-last-item" key={entry.key}><RankBadge rank={index + 1} />
@@ -444,7 +485,7 @@ function LastItemTrendSection({ title, builds }: { title: string; builds?: OpggI
             </div>
           )
         })}
-      </div>
+      </div>}
     </Section>
   )
 }
@@ -616,30 +657,17 @@ function RuneSection({ title, runes, championName, modeLabel }: { title: string;
 
 function AugmentSection({ title, groups }: { title: string; groups?: BuildRecommendation['augments'] }) {
   const [rarity, setRarity] = useState(0)
-  const [display, setDisplay] = useState<Record<number, string>>({})
   const entries = [...new Map((groups ?? []).flatMap((group) => group.items.map((item) => ({...item, rarity: group.rarity, rarityLabel: group.label ?? getAugmentRarityLabel(group.rarity)}))).map((item) => [item.id,item])).values()]
     .filter((item) => !rarity || item.rarity === rarity)
     .sort((a,b) => (Number.isFinite(b.winRate) ? b.winRate! : -1) - (Number.isFinite(a.winRate) ? a.winRate! : -1) || b.pickRate-a.pickRate || a.id-b.id)
+  const toolbar=<div className="sobp-augment-filters" role="group" aria-label="海克斯类型">
+    {[[0,'全部'],[8,'棱彩'],[4,'黄金'],[1,'白银']].map(([value,label])=><button type="button" key={value} aria-pressed={rarity===value} onClick={()=>setRarity(Number(value))}>{label}</button>)}
+    <small>{entries.length} 个 · 胜率排序</small>
+  </div>
   return <div className="sobp-augment-wrap sobp-augments-compact">
-    <div className="sobp-augment-filters" role="group" aria-label="海克斯类型">
-      {[[0,'全部'],[8,'棱彩'],[4,'黄金'],[1,'白银']].map(([value,label]) => <button type="button" key={value} aria-pressed={rarity===value} onClick={()=>setRarity(Number(value))}>{label}</button>)}
-      <small>{entries.length} 个 · 胜率排序</small>
-    </div>
-    <Section title={title} empty={!entries.length}>
-      {[8,4,1].filter((type)=>!rarity || type===rarity).map((type)=>{
-        const items=entries.filter((item)=>item.rarity===type)
-        if (!items.length) return null
-        const mode=display[type] ?? 'partial'
-        const label=({8:'棱彩',4:'黄金',1:'白银'} as Record<number,string>)[type]
-        const visible=mode==='hidden' ? [] : mode==='all' ? items : items.slice(0,8)
-        return <div className="sobp-augment-type" key={type} data-augment-type={type}>
-          <div className="sobp-augment-type-heading"><strong>{label}</strong><small>{visible.length} / {items.length}</small>
-            <select aria-label={`${label}显示`} value={mode} onChange={(event)=>setDisplay((old)=>({...old,[type]:event.target.value}))}>
-              <option value="hidden">不显示</option><option value="partial">部分显示（前 8 个）</option><option value="all">展开更多（全部）</option>
-            </select>
-          </div>
-          <div className="sobp-augment-grid">
-        {visible.map((augment,index) => {
+    <Section title={title} empty={!entries.length} count={entries.length} toolbar={toolbar}>
+      {(limit)=><div className="sobp-augment-grid">
+        {entries.slice(0,limit).map((augment,index) => {
           const info=getAugmentInfo(augment.id)
           return <div className="sobp-augment" key={augment.id} data-rarity={augment.rarity}>
             <BuildIcon src={info?.iconPath ?? ''} title={info?.name ?? String(augment.id)} description={info?.description ?? ''} subtitle={augment.rarityLabel} size={26} border={getAugmentBorder(info?.rarity)} />
@@ -650,9 +678,7 @@ function AugmentSection({ title, groups }: { title: string; groups?: BuildRecomm
             </div>
           </div>
         })}
-          </div>
-        </div>
-      })}
+      </div>}
     </Section>
   </div>
 }

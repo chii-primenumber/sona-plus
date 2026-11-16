@@ -62,7 +62,7 @@ bp.myTeam[0].championId = 0
 bp.myTeam[0].championPickIntent = 157
 bp.actions = [[{actorCellId:0,type:'pick',championId:157,completed:false,isInProgress:true}]]
 const game = { phase:'InProgress', map:{id:11,name:'召唤师峡谷'}, gameData:{ gameId:9828375, queue:queues[0], playerChampionSelections:ids.map((puuid,i)=>({puuid,championId:champions[i][0]})),teamOne:ids.slice(0,5).map((puuid,i)=>({puuid,championId:champions[i][0],teamParticipantId:i<2?1:0,selectedPosition:positions[i].toLowerCase()})), teamTwo:ids.slice(5).map((puuid,i)=>({puuid,championId:champions[i+5][0],teamParticipantId:0,selectedPosition:positions[i].toLowerCase()})) } }
-const items = [[3158,'明朗之靴'],[6617,'月石再生器'],[3504,'炽热香炉'],[6621,'黎明核心'],[3089,'灭世者的死亡之帽'],[3020,'法师之靴'],[3364,'神谕透镜']]
+const items = [[2003,'生命药水'],[3158,'明朗之靴'],[6617,'月石再生器'],[3504,'炽热香炉'],[6621,'黎明核心'],[3089,'灭世者的死亡之帽'],[3020,'法师之靴'],[3364,'神谕透镜']]
 const mockIcons = (array, type) => array.map(([id,name]) => ({id,name,iconPath:`/qa-art/${type}-${id}.svg`,description:`${name} · 离线演示图标`}))
 const version = JSON.parse(await fs.readFile(path.join(base, 'package.json'), 'utf8')).version
 const server = await createServer({ root:base, configFile:false, resolve:{alias:{'@':path.join(base,'src')}},define:{__PLUGIN_VERSION__:JSON.stringify(version)},server:{host:'127.0.0.1',port:0,open:false,strictPort:true},publicDir:false })
@@ -138,7 +138,7 @@ try {
       const rune={id:1,primary_page_id:8200,primary_rune_ids:[8214,8234,8210,8237],secondary_page_id:8400,secondary_rune_ids:[8453,8444],stat_mod_ids:[5008,5008,5002],play:100,win:67,pick_rate:.341}
       return json({meta:{version:'16.22',match_count:1000},data:{
         summary:{average_stats:{win_rate:.493,pick_rate:.07,tier:3,rank:8,tier_data:{rank:8,rank_prev:8}}},
-        core_items:core,starter_items:[],boots:[],last_items:[build([6617],84,100,.84),build([3504],0,100,.4)],
+        core_items:core,starter_items:[build([2003,2003],50,100,.7)],boots:[build([3158],55,100,.6)],last_items:[build([6617],84,100,.84),build([3504],0,100,.4)],
         summoner_spells:[build([4,7],74,100,.999),build([4,32],50,100,.001)],rune_pages:[],runes:Array.from({length:5},(_,index)=>({...rune,id:index+1,pick_rate:.341/(index+1)})),counters:[],
       }})
     }
@@ -987,6 +987,14 @@ try {
   assert.equal(await coreRows.nth(0).locator('.sobp-icon-step').count(),3)
   await buildPanel.getByText('核心出装',{exact:true}).waitFor()
   await buildPanel.getByText('后续成装推荐',{exact:true}).waitFor()
+  for (const title of ['出门装推荐','鞋子推荐']) {
+    const section=buildPanel.locator(`[data-section-title="${title}"]`)
+    await section.locator('.sobp-equipment-card').first().waitFor()
+    assert.equal(await section.getByRole('button',{name:`${title}：展开全部`,exact:true}).count(),0)
+  }
+  assert.equal(await buildPanel.locator('[data-section-title="出门装推荐"] .sobp-equipment-icons img').count(),2)
+  assert.equal(await buildPanel.locator('[data-section-title="出门装推荐"] .sobp-pick-rate strong').textContent(),'70.0%')
+
   const sectionOrder=await buildPanel.evaluate((node)=>[...node.querySelectorAll('.sobp-section-title')].map((title)=>title.textContent.trim()))
   assert.ok(sectionOrder.indexOf('核心出装')>sectionOrder.indexOf('召唤师技能'))
   assert.ok(sectionOrder.indexOf('后续成装推荐')>sectionOrder.indexOf('核心出装'))
@@ -1213,7 +1221,7 @@ try {
       context:{championId:16,queueId:2400,gameMode:'KIWI',position:'none',gameVersion:'fixture'},
       recommendation:{mode:'aram',modeLabel:'海克斯大乱斗',version:'fixture',position:'none',baselineWinRate:.5,summary:[],
         coreItems:[{ids:[6617,3504,6621],win:51,play:100,pick_rate:.2}],lastItems:[{ids:[6617],win:49,play:100,pick_rate:.3}],
-        starterItems:[],boots:[],prismItems:[],runePages:[],summonerSpells:[],matchups:[],
+        starterItems:[{ids:[2003,2003],win:50,play:100,pick_rate:.7}],boots:[{ids:[3158],win:55,play:100,pick_rate:.6}],prismItems:[],runePages:[],summonerSpells:[],matchups:[],
         augments:[{rarity:1,items:[{id:101,pickRate:.2,winRate:.55},{id:102,pickRate:.1,winRate:0},{id:103,pickRate:.1}]}]},
       isLoading:false,loadError:'',selectedTier:'all',onTierChange:()=>{},onPositionChange:()=>{},onClose:()=>{}
     }
@@ -1225,40 +1233,53 @@ try {
   await mayhemPanel.locator('.sobp-core-builds .sobp-win-delta').waitFor({state:'attached'})
   assert.equal(await mayhemPanel.locator('.sobp-core-builds .sobp-win-delta.is-positive').textContent(),'(+1.0%)')
   assert.equal(await mayhemPanel.locator('.sobp-last-item .sobp-win-delta.is-negative').textContent(),'(-1.0%)')
+  assert.equal(await mayhemPanel.locator('.sobp-equipment-card').count(),2)
   const augmentDeltas=await mayhemPanel.locator('.sobp-augment-grid .sobp-win-delta').allTextContents()
   assert.deepEqual(augmentDeltas,['(+5.0%)','(-50.0%)'])
   assert.equal(await mayhemPanel.getByText('符文搭配',{exact:true}).count(),0)
   assert.equal(await mayhemPanel.getByText('优势 / 劣势对局',{exact:true}).count(),0)
   assert.equal(await mayhemPanel.locator('.sobp-augment-grid .sobp-stat-track').first().evaluate((node)=>getComputedStyle(node).display),'none')
   await page.evaluate(()=>{
-    window.qaMayhemProps={...window.qaMayhemProps,recommendation:{...window.qaMayhemProps.recommendation,augments:[8,4,1].map((rarity,g)=>({rarity,items:Array.from({length:12},(_,i)=>({id:1000+g*100+i,pickRate:.1,winRate:.5+(i*3+g)/100}))}))}}
+    window.qaMayhemProps={...window.qaMayhemProps,recommendation:{...window.qaMayhemProps.recommendation,lastItems:Array.from({length:18},(_,i)=>({ids:[6617+i],win:51,play:100,pick_rate:.1})),augments:[8,4,1].map((rarity,g)=>({rarity,items:Array.from({length:12},(_,i)=>({id:1000+g*100+i,pickRate:.1,winRate:.5+(i*3+g)/100}))}))}}
     window.qaMayhemRender()
   })
   await mayhemPanel.evaluate((node)=>{node.style.cssText='position:fixed;inset:12px;z-index:2147483647;background:#111;height:calc(100vh - 24px)'})
-  await page.waitForFunction(()=>document.querySelectorAll('#qa-mayhem-recommendations .sobp-augment').length===24)
+  await page.waitForFunction(()=>document.querySelectorAll('#qa-mayhem-recommendations .sobp-augment').length===8)
   const mayhemTitles=await mayhemPanel.locator('.sobp-section-title').allTextContents()
   assert.match(mayhemTitles[0],/海克斯/)
-  for (const label of ['棱彩','黄金','白银']) {
-    const select=mayhemPanel.getByLabel(`${label}显示`)
-    assert.equal(await select.inputValue(),'partial')
-  }
-  for (const group of await mayhemPanel.locator('.sobp-augment-type').all()) {
-    const rates=(await group.locator('.sobp-win-rate strong').allTextContents()).map(parseFloat)
-    assert.deepEqual(rates,[...rates].sort((a,b)=>b-a))
-  }
-  await mayhemPanel.getByLabel('黄金显示').selectOption('hidden')
-  assert.equal(await mayhemPanel.locator('[data-augment-type="4"] .sobp-augment').count(),0)
-  await mayhemPanel.getByLabel('黄金显示').selectOption('all')
-  assert.equal(await mayhemPanel.locator('[data-augment-type="4"] .sobp-augment').count(),12)
-  await mayhemPanel.getByLabel('黄金显示').selectOption('partial')
-  assert.equal(await mayhemPanel.locator('[data-augment-type="4"] .sobp-augment').count(),8)
+  const allRates=(await mayhemPanel.locator('.sobp-augment .sobp-win-rate strong').allTextContents()).map(parseFloat)
+  assert.deepEqual(allRates,[...allRates].sort((a,b)=>b-a))
+  assert.ok(new Set(await mayhemPanel.locator('.sobp-augment').evaluateAll((nodes)=>nodes.map((node)=>node.dataset.rarity))).size>1)
+  const filterPosition=await mayhemPanel.evaluate((node)=>({head:node.querySelector('.sobp-augment-wrap h3').getBoundingClientRect().bottom,filter:node.querySelector('.sobp-augment-filters').getBoundingClientRect().top}))
+  assert.ok(filterPosition.filter>=filterPosition.head)
   for (const [label,rarity] of [['棱彩',8],['黄金',4],['白银',1]]) {
     await mayhemPanel.getByRole('button',{name:label,exact:true}).evaluate((node)=>node.click())
     await page.waitForFunction((r)=>[...document.querySelectorAll('#qa-mayhem-recommendations .sobp-augment')].length===8&&[...document.querySelectorAll('#qa-mayhem-recommendations .sobp-augment')].every((node)=>Number(node.dataset.rarity)===r),rarity)
-    assert.equal(await mayhemPanel.getByRole('button',{name:label,exact:true}).getAttribute('aria-pressed'),'true')
   }
   await mayhemPanel.getByRole('button',{name:'全部',exact:true}).evaluate((node)=>node.click())
-  await page.waitForFunction(()=>document.querySelectorAll('#qa-mayhem-recommendations .sobp-augment').length===24)
+  await mayhemPanel.getByRole('button',{name:'海克斯推荐：展开全部',exact:true}).click()
+  assert.equal(await mayhemPanel.locator('.sobp-augment').count(),36)
+  await mayhemPanel.getByRole('button',{name:'海克斯推荐：部分显示',exact:true}).click()
+  assert.equal(await mayhemPanel.locator('.sobp-augment').count(),8)
+  await mayhemPanel.getByRole('button',{name:'海克斯推荐：收起',exact:true}).click()
+  await page.waitForFunction(()=>document.querySelector('#qa-mayhem-recommendations .sobp-augment-wrap .sobp-section-reveal').getBoundingClientRect().height<1)
+  await mayhemPanel.getByRole('button',{name:'海克斯推荐：展开',exact:true}).click()
+  await page.waitForFunction(()=>document.querySelector('#qa-mayhem-recommendations .sobp-augment-wrap .sobp-section-reveal').getBoundingClientRect().height>100)
+  await mayhemPanel.getByRole('button',{name:'后续成装推荐：展开全部',exact:true}).click()
+  assert.equal(await mayhemPanel.locator('.sobp-last-item').count(),18)
+  const itemGrid=await mayhemPanel.locator('.sobp-last-items').evaluate((node)=>{
+    const cards=[...node.querySelectorAll('.sobp-last-item')].map((item)=>item.getBoundingClientRect())
+    return {firstRow:cards.filter((box)=>Math.abs(box.top-cards[0].top)<2).length,maxWidth:Math.max(...cards.map((box)=>box.width))}
+  })
+  assert.ok(itemGrid.firstRow>=3,JSON.stringify(itemGrid))
+  assert.ok(itemGrid.maxWidth<=260,JSON.stringify(itemGrid))
+  assert.equal(await mayhemPanel.getByRole('button',{name:'核心出装：展开全部',exact:true}).count(),0)
+  await mayhemPanel.getByRole('button',{name:'核心出装：收起',exact:true}).click()
+  await page.waitForFunction(()=>document.querySelector('#qa-mayhem-recommendations .sobp-core-builds .sobp-section-reveal').getBoundingClientRect().height<1)
+  await mayhemPanel.getByRole('button',{name:'核心出装：展开',exact:true}).click()
+  await mayhemPanel.getByRole('button',{name:'后续成装推荐：收起',exact:true}).click()
+  await page.waitForFunction(()=>document.querySelector('#qa-mayhem-recommendations .sobp-trend-wrap .sobp-section-reveal').getBoundingClientRect().height<1)
+  await mayhemPanel.getByRole('button',{name:'后续成装推荐：展开',exact:true}).click()
   const labelGap=await mayhemPanel.locator('.sobp-augment .sobp-pick-rate').first().evaluate((node)=>node.querySelector('strong').getBoundingClientRect().left-node.querySelector('span').getBoundingClientRect().right)
   assert.ok(labelGap>=0 && labelGap<=8,`pick label gap ${labelGap}`)
   await mayhemPanel.evaluate((node)=>{node.style.cssText='position:fixed;inset:12px;z-index:2147483647;background:#111;height:calc(100vh - 24px)'})
