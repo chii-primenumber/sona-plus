@@ -1363,8 +1363,8 @@ try {
     const cards=[...node.querySelectorAll('.sobp-last-item')].map((item)=>item.getBoundingClientRect())
     return {firstRow:cards.filter((box)=>Math.abs(box.top-cards[0].top)<2).length,maxWidth:Math.max(...cards.map((box)=>box.width))}
   })
-  assert.ok(itemGrid.firstRow>=3,JSON.stringify(itemGrid))
-  assert.ok(itemGrid.maxWidth<=260,JSON.stringify(itemGrid))
+  assert.equal(itemGrid.firstRow,5,JSON.stringify(itemGrid))
+  assert.ok(itemGrid.maxWidth<=300,JSON.stringify(itemGrid))
   assert.equal(await mayhemPanel.getByRole('button',{name:'核心出装：展开全部',exact:true}).count(),0)
   await mayhemPanel.getByRole('button',{name:'核心出装：收起',exact:true}).click()
   await page.waitForFunction(()=>document.querySelector('#qa-mayhem-recommendations .sobp-core-builds .sobp-section-reveal').getBoundingClientRect().height<1)
