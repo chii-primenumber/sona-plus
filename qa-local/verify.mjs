@@ -1221,7 +1221,7 @@ try {
       context:{championId:16,queueId:2400,gameMode:'KIWI',position:'none',gameVersion:'fixture'},
       recommendation:{mode:'aram',modeLabel:'海克斯大乱斗',version:'fixture',position:'none',baselineWinRate:.5,summary:[],
         coreItems:[{ids:[6617,3504,6621],win:51,play:100,pick_rate:.2}],lastItems:[{ids:[6617],win:49,play:100,pick_rate:.3}],
-        starterItems:[{ids:[2003,2003],win:50,play:100,pick_rate:.7}],boots:[{ids:[3158],win:55,play:100,pick_rate:.6}],prismItems:[],runePages:[],summonerSpells:[],matchups:[],
+        starterItems:[{ids:[2051,3070],win:0,play:0,pick_rate:NaN}],boots:[{ids:[3158],win:55,play:100,pick_rate:.6,baselineWinRate:null}],prismItems:[],runePages:[],summonerSpells:[],matchups:[],
         augments:[{rarity:1,items:[{id:101,pickRate:.2,winRate:.55},{id:102,pickRate:.1,winRate:0},{id:103,pickRate:.1}]}]},
       isLoading:false,loadError:'',selectedTier:'all',onTierChange:()=>{},onPositionChange:()=>{},onClose:()=>{}
     }
@@ -1229,11 +1229,20 @@ try {
     window.qaMayhemRender=()=>root.render((React.createElement ?? React.default.createElement)(OpggBuildRecommendationPanel,window.qaMayhemProps))
     window.qaMayhemRender()
   })
+  const parsedStarts=await page.evaluate(async()=>{
+    const {parseAramggStartingItems}=await import('/src/lib/aramgg-api.ts')
+    return parseAramggStartingItems(`<section data-champion-builds><h3>Core Items</h3><div><div><img src="https://cdn.dtodo.cn/hextech/item-icons/9999.png"></div></div><h3>Starting Items</h3><div><div><img src="https://cdn.dtodo.cn/hextech/item-icons/2051.png"><img src="https://cdn.dtodo.cn/hextech/item-icons/3070.png"></div><div><img src="https://cdn.dtodo.cn/hextech/item-icons/2051.png"><img src="https://cdn.dtodo.cn/hextech/item-icons/2003.png"><img src="https://cdn.dtodo.cn/hextech/item-icons/2003.png"></div></div><h3>Starting Items</h3><div><div><img src="https://cdn.dtodo.cn/hextech/item-icons/2051.png"><img src="https://cdn.dtodo.cn/hextech/item-icons/3070.png"></div></div></section>`)
+  })
+  assert.deepEqual(parsedStarts,[{ids:[2051,3070]},{ids:[2051,2003,2003]}])
   const mayhemPanel=page.locator('#qa-mayhem-recommendations')
   await mayhemPanel.locator('.sobp-core-builds .sobp-win-delta').waitFor({state:'attached'})
   assert.equal(await mayhemPanel.locator('.sobp-core-builds .sobp-win-delta.is-positive').textContent(),'(+1.0%)')
   assert.equal(await mayhemPanel.locator('.sobp-last-item .sobp-win-delta.is-negative').textContent(),'(-1.0%)')
   assert.equal(await mayhemPanel.locator('.sobp-equipment-card').count(),2)
+  assert.equal(await mayhemPanel.locator('[data-section-title="出门装推荐"] .sobp-win-rate strong').textContent(),'—')
+  assert.equal(await mayhemPanel.locator('[data-section-title="出门装推荐"] .sobp-pick-rate strong').textContent(),'—')
+  assert.equal(await mayhemPanel.locator('[data-section-title="鞋子推荐"] .sobp-win-delta').count(),0)
+
   const augmentDeltas=await mayhemPanel.locator('.sobp-augment-grid .sobp-win-delta').allTextContents()
   assert.deepEqual(augmentDeltas,['(+5.0%)','(-50.0%)'])
   assert.equal(await mayhemPanel.getByText('符文搭配',{exact:true}).count(),0)

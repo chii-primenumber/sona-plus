@@ -133,6 +133,7 @@ export interface AramggChampionRecommendation {
   augments: Record<string, AramggChampionStatEntry>
   coreItemBuilds: AramggCoreItemBuild[]
   items: Record<string, AramggChampionStatEntry>
+  starterItems?: Array<{ ids: number[] }>
 }
 
 export class AramggApiError extends Error {
@@ -251,6 +252,25 @@ export function parseAramggChampionDetails(
   return result
 }
 
+/** Read public Mayhem starting combinations without executing page scripts or inventing rates. */
+export function parseAramggStartingItems(html: string): Array<{ ids: number[] }> {
+  const doc=new DOMParser().parseFromString(html,'text/html')
+  const section=doc.querySelector('[data-champion-builds]')
+  if (!section) return []
+  const result=new Map<string,{ids:number[]}>()
+  for (const heading of section.querySelectorAll('h3')) {
+    if (!/^(Starting Items|Starter Items|出门装)$/i.test(heading.textContent?.trim() ?? '')) continue
+    for (const row of heading.nextElementSibling?.children ?? []) {
+      const ids=Array.from(row.querySelectorAll('img')).flatMap((image)=>{
+        const match=image.getAttribute('src')?.match(/\/item-icons\/(\d+)\.(?:png|webp|svg)/i)
+        return match && Number(match[1])>0 ? [Number(match[1])] : []
+      })
+      if (ids.length && ids.length<=8) result.set(ids.join(','),{ids})
+    }
+  }
+  return [...result.values()]
+}
+
 export class AramggDataApi {
   static readonly BASE_URL = 'https://aramgg.com'
   static readonly DEFAULT_TIMEOUT_MS = 10000
@@ -324,11 +344,16 @@ export class AramggDataApi {
       console.warn(`[ARAMGG] champion ${championId} ranking unavailable:`, err)
       return null
     })
-    const [details, ranking] = await Promise.all([
+    const [details, ranking, html] = await Promise.all([
       this.request<AramggChampionDetails>(`/data/champion-details/${championId}.json`, options),
       rankingPromise,
+      this.request<string>(`/en/champion-stats/${championId}`, options, true).catch((error)=>{
+        console.warn('[ARAMGG] Mayhem starting combinations unavailable:',error)
+        return ''
+      }),
     ])
     const parsed = parseAramggChampionDetails(details, ranking, championId)
+    parsed.starterItems = parseAramggStartingItems(html)
 
     console.groupCollapsed(`[ARAMGG] champion ${championId} parsed recommendation`)
     console.log('summary:', {
@@ -342,7 +367,7 @@ export class AramggDataApi {
     return parsed
   }
 
-  private async request<T>(path: string, options: AramggRequestOptions = {}): Promise<T> {
+  private async request<T>(path: string, options: AramggRequestOptions = {}, asText = false): Promise<T> {
     const url = new URL(path, AramggDataApi.BASE_URL)
     const controller = new AbortController()
     const timeoutMs = options.timeoutMs ?? AramggDataApi.DEFAULT_TIMEOUT_MS
@@ -355,11 +380,11 @@ export class AramggDataApi {
       const response = await fetch(url.toString(), {
         method: 'GET',
         mode: 'cors',
-        headers: { Accept: 'application/json' },
+        headers: { Accept: asText ? 'text/html' : 'application/json' },
         signal: controller.signal,
       })
       const text = await response.text()
-      const body = text ? JSON.parse(text) as unknown : null
+      const body = asText ? text : text ? JSON.parse(text) as unknown : null
 
       if (!response.ok) {
         throw new AramggApiError(`[ARAMGG] 请求失败: ${response.status} ${response.statusText}`, {

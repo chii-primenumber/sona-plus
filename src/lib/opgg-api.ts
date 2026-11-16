@@ -75,6 +75,8 @@ export interface OpggArenaSummary {
 }
 
 export interface OpggItemBuild {
+  /** null disables comparison for a different data scope. */
+  baselineWinRate?: number | null
   ids: number[]
   win: number
   play: number

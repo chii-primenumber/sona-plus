@@ -470,6 +470,7 @@ function LastItemTrendSection({ title, builds }: { title: string; builds?: OpggI
       key: `${buildIndex}-${itemIndex}-${id}`,
       pickRate: build.pick_rate,
       winRate: getBuildWinRate(build),
+      baselineWinRate: build.baselineWinRate,
     })))
 
 
@@ -481,7 +482,7 @@ function LastItemTrendSection({ title, builds }: { title: string; builds?: OpggI
           return (
             <div className="sobp-last-item" key={entry.key}><RankBadge rank={index + 1} />
               <BuildIcon src={item.iconPath} title={item.name} description={item.description} price={item.price} size={34} />
-              <RecommendationRates pickRate={entry.pickRate} winRate={entry.winRate} maxRate={1} />
+              <RecommendationRates pickRate={entry.pickRate} winRate={entry.winRate} maxRate={1} baselineWinRate={entry.baselineWinRate} />
             </div>
           )
         })}
@@ -693,12 +694,13 @@ function getBuildWinRate(build: {win?: number; play?: number}): number | undefin
     && play > 0 && win >= 0 && win <= play ? win / play : undefined
 }
 
-function RecommendationStats({ build, maxRate }: { build: {pick_rate: number; win?: number; play?: number}; maxRate: number }) {
-  return <RecommendationRates pickRate={build.pick_rate} winRate={getBuildWinRate(build)} maxRate={maxRate} />
+function RecommendationStats({ build, maxRate }: { build: {pick_rate: number; win?: number; play?: number; baselineWinRate?: number | null}; maxRate: number }) {
+  return <RecommendationRates pickRate={build.pick_rate} winRate={getBuildWinRate(build)} maxRate={maxRate} baselineWinRate={build.baselineWinRate} />
 }
 
-function RecommendationRates({pickRate,winRate,maxRate}:{pickRate:number;winRate?:number;maxRate:number}) {
-  const delta = recommendationDelta(winRate, useContext(BaselineWinRate))
+function RecommendationRates({pickRate,winRate,maxRate,baselineWinRate}:{pickRate:number;winRate?:number;maxRate:number;baselineWinRate?:number|null}) {
+  const inherited=useContext(BaselineWinRate)
+  const delta = recommendationDelta(winRate, baselineWinRate === undefined ? inherited : baselineWinRate)
   return <div className="sobp-recommendation-stats">
     <StatBar value={pickRate} maxRate={maxRate} />
     <div className="sobp-win-rate"><span>胜率</span><span className="sobp-win-value"><strong>{formatPercent(winRate)}</strong>{delta != null && <small className={`sobp-win-delta${delta > 0 ? " is-positive" : delta < 0 ? " is-negative" : ""}`}>({delta > 0 ? "+" : ""}{delta.toFixed(1)}%)</small>}</span></div>
