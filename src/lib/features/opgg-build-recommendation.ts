@@ -1452,6 +1452,7 @@ async function loadRecommendation(context: RecommendationContext): Promise<Build
     modeLabel: getModeLabel(mode, context),
     version: mainChampion.meta.version,
     position,
+    baselineWinRate: normal?.data.summary.average_stats.win_rate ?? null,
     summary: getSummaryLines(mainChampion),
     summonerSpells: normal?.data.summoner_spells ?? [],
     starterItems: data.starter_items ?? [],
@@ -1511,6 +1512,7 @@ async function loadAramggKiwiRecommendation(
     modeLabel: getModeLabel(mode, context),
     version: aramgg.championStats?.version || opggChampion?.meta.version || context.gameVersion || '',
     position,
+    baselineWinRate: toOptionalNumber(aramgg.championStats?.win_rate),
     summary: getAramggSummaryLines(aramgg),
     summonerSpells: normal?.data.summoner_spells ?? [],
     starterItems: data?.starter_items ?? [],
@@ -1634,7 +1636,7 @@ function getAramggAugmentRarity(augmentId: number, mayhemAugments: AramggMayhemA
 }
 
 function mapAramggAugments(augments: Record<string, AramggChampionStatEntry>, mayhemAugments: AramggMayhemAugments): BuildRecommendation['augments'] {
-  const groups = new Map<number, Array<{ id: number; pickRate: number; winRate: number }>>()
+  const groups = new Map<number, Array<{ id: number; pickRate: number; winRate?: number }>>()
 
   Object.entries(augments).forEach(([id, augment]) => {
     const augmentId = Number(id)
@@ -1645,7 +1647,7 @@ function mapAramggAugments(augments: Record<string, AramggChampionStatEntry>, ma
     items.push({
       id: augmentId,
       pickRate: toNumber(augment.pick_rate),
-      winRate: toNumber(augment.win_rate),
+      winRate: toOptionalNumber(augment.win_rate) ?? undefined,
     })
     groups.set(rarity, items)
   })
@@ -1655,7 +1657,7 @@ function mapAramggAugments(augments: Record<string, AramggChampionStatEntry>, ma
     .map(([rarity, items]) => ({
       rarity,
       items: items
-        .sort((a, b) => b.winRate - a.winRate || b.pickRate - a.pickRate)
+        .sort((a, b) => (b.winRate ?? -1) - (a.winRate ?? -1) || b.pickRate - a.pickRate)
         .slice(0, 5)
         .map((augment) => ({
           id: augment.id,

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { createContext, useContext, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { SonaSelect } from '@/components/ui/SonaSelect'
 import tier1Icon from '@/../assets/tier/t1.svg'
@@ -25,6 +25,9 @@ import { getRankedMiniCrest } from '@/lib/ranked-assets'
 import { type OpggItemBuild, type OpggMatchup, type OpggMode, type OpggPosition, type OpggRuneBuild, type OpggTier } from '@/lib/opgg-api'
 import { translate, useI18n } from '@/i18n'
 import '@/styles/OpggBuildRecommendationPanel.css'
+
+import { recommendationDelta } from '@/lib/recommendation-rates'
+const BaselineWinRate = createContext<number | null>(null)
 
 const MAX_RECOMMENDATION_ROWS = 5
 const OPGG_TIER_BASE_OPTIONS: Array<{ value: OpggTier; label: string }> = [
@@ -64,6 +67,7 @@ export interface BuildRecommendation {
   modeLabel: string
   version: string
   position: OpggPosition
+  baselineWinRate?: number | null
   summary: string[]
   summonerSpells: OpggItemBuild[]
   starterItems: OpggItemBuild[]
@@ -127,7 +131,7 @@ export function OpggBuildRecommendationPanel({
   const showPositionFilter = !!koreanMatchups || supportsPositionFilter(context, recommendation)
 
   return (
-    <div className="sobp">
+    <BaselineWinRate.Provider value={recommendation?.baselineWinRate ?? null}><div className="sobp">
       <div className="sobp-ambient" />
 
       <header className="sobp-titlebar">
@@ -171,7 +175,7 @@ export function OpggBuildRecommendationPanel({
               <RuneSection title={t('opgg.section.runes')} runes={recommendation?.runePages} championName={championName} modeLabel={recommendation?.modeLabel || queueText} />
               <SpellSection title={t('opgg.section.spells')} builds={recommendation?.summonerSpells} limit={MAX_RECOMMENDATION_ROWS} />
             </div>
-              <div className="sobp-core-builds" data-testid="three-item-builds"><ItemSection title="三件套推荐" builds={recommendation?.coreItems?.filter((build) => build.ids.length === 3 && build.ids.every((id) => Number.isInteger(id) && id > 0) && new Set(build.ids).size === 3)} itemLimit={3} /></div>
+              <div className="sobp-core-builds" data-testid="three-item-builds"><ItemSection title="核心出装" builds={recommendation?.coreItems?.filter((build) => build.ids.length === 3 && build.ids.every((id) => Number.isInteger(id) && id > 0) && new Set(build.ids).size === 3)} itemLimit={3} /></div>
             <div className="sobp-trend-wrap">
               <LastItemTrendSection title="后续成装推荐" builds={recommendation?.lastItems} />
             </div>
@@ -185,7 +189,7 @@ export function OpggBuildRecommendationPanel({
         {recommendation?.warning && <PanelMessage warning>{recommendation.warning}</PanelMessage>}
         {!isLoading && !loadError && !recommendation && !koreanMatchups && <PanelMessage>{t('opgg.noData')}</PanelMessage>}
       </main>
-    </div>
+    </div></BaselineWinRate.Provider>
   )
 }
 
@@ -661,9 +665,10 @@ function RecommendationStats({ build, maxRate }: { build: {pick_rate: number; wi
 }
 
 function RecommendationRates({pickRate,winRate,maxRate}:{pickRate:number;winRate?:number;maxRate:number}) {
+  const delta = recommendationDelta(winRate, useContext(BaselineWinRate))
   return <div className="sobp-recommendation-stats">
     <StatBar value={pickRate} maxRate={maxRate} />
-    <div className="sobp-win-rate"><span>胜率</span><strong>{formatPercent(winRate)}</strong></div>
+    <div className="sobp-win-rate"><span>胜率</span><span className="sobp-win-value"><strong>{formatPercent(winRate)}</strong>{delta != null && <small className={`sobp-win-delta${delta > 0 ? " is-positive" : delta < 0 ? " is-negative" : ""}`}>({delta > 0 ? "+" : ""}{delta.toFixed(1)}%)</small>}</span></div>
   </div>
 }
 

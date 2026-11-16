@@ -985,16 +985,22 @@ try {
   await buildPanel.locator('.sobp-recommendation-stats').first().waitFor()
   const coreRows=buildPanel.getByTestId('three-item-builds').locator('.sobp-row')
   assert.equal(await coreRows.nth(0).locator('.sobp-icon-step').count(),3)
-  await buildPanel.getByText('三件套推荐',{exact:true}).waitFor()
+  await buildPanel.getByText('核心出装',{exact:true}).waitFor()
   await buildPanel.getByText('后续成装推荐',{exact:true}).waitFor()
   const sectionOrder=await buildPanel.evaluate((node)=>[...node.querySelectorAll('.sobp-section-title')].map((title)=>title.textContent.trim()))
-  assert.ok(sectionOrder.indexOf('三件套推荐')>sectionOrder.indexOf('召唤师技能'))
-  assert.ok(sectionOrder.indexOf('后续成装推荐')>sectionOrder.indexOf('三件套推荐'))
+  assert.ok(sectionOrder.indexOf('核心出装')>sectionOrder.indexOf('召唤师技能'))
+  assert.ok(sectionOrder.indexOf('后续成装推荐')>sectionOrder.indexOf('核心出装'))
   assert.equal(await coreRows.first().evaluate((node)=>getComputedStyle(node.parentElement).display),'flex')
 
   assert.equal(await coreRows.nth(0).locator('.sobp-pick-rate strong').textContent(),'31.3%')
   assert.equal(await coreRows.nth(0).locator('.sobp-win-rate strong').textContent(),'60.0%')
   assert.equal(await coreRows.nth(1).locator('.sobp-win-rate strong').textContent(),'0.0%')
+  assert.equal(await coreRows.first().locator('.sobp-win-delta.is-positive').textContent(),'(+10.7%)')
+  assert.equal(await coreRows.nth(1).locator('.sobp-win-delta.is-negative').textContent(),'(-49.3%)')
+  assert.equal(await coreRows.nth(2).locator('.sobp-win-delta').count(),0)
+  assert.notEqual(await coreRows.first().locator('.sobp-stat-track').evaluate((node)=>getComputedStyle(node).display),'none')
+  assert.equal(await buildPanel.locator('.sobp-last-item .sobp-stat-track').first().evaluate((node)=>getComputedStyle(node).display),'none')
+
   assert.equal(await coreRows.nth(2).locator('.sobp-win-rate strong').textContent(),'—')
   assert.equal(await coreRows.nth(3).locator('.sobp-win-rate strong').textContent(),'—')
   assert.equal(await buildPanel.locator('.sobp-grid > .sobp-section').nth(0).locator('.sobp-win-rate strong').first().textContent(),'67.0%')
@@ -1195,6 +1201,30 @@ try {
   assert.equal(await actions.getByRole('button', {name:'查看资料'}).count(),1)
   await actions.getByRole('button', {name:'详细战绩'}).click()
   await assertProfile('白昼拾荒#DEMO')
+  // Same presentation and baseline comparison for Mayhem equipment and augments.
+  await page.evaluate(async()=>{
+    const React=await import('/node_modules/.vite/deps/react.js')
+    const ReactDOM=await import('/node_modules/.vite/deps/react-dom_client.js')
+    const createRoot=ReactDOM.createRoot ?? ReactDOM.default.createRoot
+    const {OpggBuildRecommendationPanel}=await import('/src/components/ui/OpggBuildRecommendationPanel.tsx')
+    const host=document.createElement('div');host.id='qa-mayhem-recommendations';document.body.append(host)
+    const root=createRoot(host);window.qaMayhemRoot=root
+    root.render((React.createElement ?? React.default.createElement)(OpggBuildRecommendationPanel,{
+      context:{championId:16,queueId:2400,gameMode:'KIWI',position:'none',gameVersion:'fixture'},
+      recommendation:{mode:'aram',modeLabel:'海克斯大乱斗',version:'fixture',position:'none',baselineWinRate:.5,summary:[],
+        coreItems:[{ids:[6617,3504,6621],win:51,play:100,pick_rate:.2}],lastItems:[{ids:[6617],win:49,play:100,pick_rate:.3}],
+        starterItems:[],boots:[],prismItems:[],runePages:[],summonerSpells:[],matchups:[],
+        augments:[{rarity:1,items:[{id:101,pickRate:.2,winRate:.55},{id:102,pickRate:.1,winRate:0},{id:103,pickRate:.1}]}]},
+      isLoading:false,loadError:'',selectedTier:'all',onTierChange:()=>{},onPositionChange:()=>{},onClose:()=>{}
+    }))
+  })
+  const mayhemPanel=page.locator('#qa-mayhem-recommendations')
+  await mayhemPanel.locator('.sobp-core-builds .sobp-win-delta').waitFor({state:'attached'})
+  assert.equal(await mayhemPanel.locator('.sobp-core-builds .sobp-win-delta.is-positive').textContent(),'(+1.0%)')
+  assert.equal(await mayhemPanel.locator('.sobp-last-item .sobp-win-delta.is-negative').textContent(),'(-1.0%)')
+  const augmentDeltas=await mayhemPanel.locator('.sobp-augment-grid .sobp-win-delta').allTextContents()
+  assert.deepEqual(augmentDeltas,['(+5.0%)','(-50.0%)'])
+  await page.evaluate(()=>{window.qaMayhemRoot.unmount();document.getElementById('qa-mayhem-recommendations').remove()})
   assert.equal(errors.length,0,errors.join('\n'))
   assert.equal(writes.length,0,writes.join('\n'))
   console.log(JSON.stringify({result:'passed', checks:['current, peak and previous ranks', 'split, copyable and hover-only Riot IDs', 'single-button replay download and playback', 'icon-only report expansion', 'segmented bars and missing breakdown', 'equipment and Mayhem tooltips', 'display settings for team, personal and report', 'shared and persisted plugin theme', 'name, Riot ID and PUUID search', 'friends, visits and region reference', 'cross-region profile, ranks and matches', 'native locked enemy row with nonstandard portrait path', 'ranked and custom draft gating', 'Korean lane/tier queries and no-data state', 'champion filter toggle and damage badge', 'personal history', 'player search and return', 'encounter profile icons', 'filters and pagination', 'native fallback', 'BP party colors and game ten', 'recent match detail', 'transparent nested scrollbars', 'nested Escape', 'phase exit', '1000px layout', 'native search clearance and exclusive profile entry', 'history and postgame context menus', 'navigation preserves filters, pagination, expansion and scroll without refetch', 'champion sorting and minimum samples', 'variable-height virtual history', 'batched and scoped native scans', 'visible-layer particles and hidden-page pause', 'persisted effects switch', 'no unexpected writes or page errors'], requests:counts.length, blockedUnrelatedExternal:[...new Set(external)]},null,2))

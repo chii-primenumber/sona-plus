@@ -990,7 +990,7 @@
 .sobp-core-builds .sobp-recommendation-stats,
 .sobp-last-item .sobp-recommendation-stats { display: flex; align-items: center; gap: 18px; width: 210px; }
 .sobp-core-builds .sobp-stat, .sobp-last-item .sobp-stat { flex: 1; }
-.sobp-core-builds .sobp-stat-track, .sobp-last-item .sobp-stat-track { display: none; }
+.sobp-last-item .sobp-stat-track { display: none; }
 .sobp-core-builds .sobp-pick-rate, .sobp-last-item .sobp-pick-rate,
 .sobp-core-builds .sobp-win-rate, .sobp-last-item .sobp-win-rate { gap: 6px; white-space: nowrap; }
 .sobp-core-builds .sobp-win-rate, .sobp-last-item .sobp-win-rate { min-width: 78px; }
@@ -1006,4 +1006,19 @@
   .sobp-body { padding: 10px; }
   .sobp-core-builds .sobp-recommendation-stats { width: auto; gap: 8px; }
   .sobp-core-builds .sobp-pick-rate > span, .sobp-core-builds .sobp-win-rate > span { display: none; }
+}
+
+.sobp-win-value { display: inline-flex; gap: 3px; align-items: baseline; white-space: nowrap; }
+.sobp-win-delta { font: inherit; font-size: 10px; color: rgb(var(--sona-muted-rgb)); }
+.sobp-win-delta.is-positive { color: #66d49d; }
+.sobp-win-delta.is-negative { color: #ef8790; }
+.sobp-recommendation-stats { width: 142px; }
+.sobp-core-builds .sobp-recommendation-stats { width: 285px; gap: 14px; }
+.sobp-core-builds .sobp-stat { min-width: 92px; }
+.sobp-core-builds .sobp-stat-track { display: block; margin-top: 3px; }
+.sobp-core-builds .sobp-win-rate, .sobp-last-item .sobp-win-rate { min-width: 125px; }
+@container (max-width: 560px) {
+  .sobp-core-builds .sobp-recommendation-stats { width: auto; gap: 8px; }
+  .sobp-core-builds .sobp-stat { min-width: 62px; }
+  .sobp-core-builds .sobp-win-rate { min-width: 0; }
 }

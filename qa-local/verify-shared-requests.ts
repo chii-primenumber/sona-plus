@@ -52,7 +52,7 @@ const allRejection = assert.rejects(all, { name: 'AbortError' })
 await tick(); allController.abort(); await allRejection; assert.equal(transportAborted, true)
 pool.clear(); assert.equal(await pool.run('third', next), 7)
 const expiring = new SharedRequests(1)
-await expiring.run('expiry', next, { ttlMs: 1 }); await tick()
+await expiring.run('expiry', next, { ttlMs: 1 }); await new Promise((resolve) => setTimeout(resolve, 25))
 const beforeExpiry = fetches
 await expiring.run('expiry', next); assert.equal(fetches, beforeExpiry + 1)
 const timed = new SharedRequests(1, 1, 15)
