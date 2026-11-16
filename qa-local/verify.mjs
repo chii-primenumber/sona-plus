@@ -208,7 +208,7 @@ try {
     if (p === '/lol-summoner/v1/current-summoner/summoner-profile') return json({backgroundSkinId:103000})
     if (p === '/lol-game-data/assets/v1/champions/103.json') return json({id:103,skins:[{id:103000,uncenteredSplashPath:'/lol-game-data/assets/qa-career/103000.jpg'}]})
     if (p.startsWith('/lol-game-data/assets/qa-career/')) return route.fulfill({contentType:'image/jpeg',body:careerSplash}).catch(()=>{})
-    if (p.endsWith('/champion-summary.json')) return json([...champions,[154,'扎克'],[83,'约里克']].map(([id,name])=>({id,name:'英雄',description:name,alias:`Preview${id}`,squarePortraitPath:`/qa-art/champion-${id}.svg`})))
+    if (p.endsWith('/champion-summary.json')) return json([...champions,[154,'扎克'],[83,'约里克'],[799,'安蓓萨']].map(([id,name])=>({id,name:'英雄',description:name,alias:`Preview${id}`,squarePortraitPath:`/qa-art/champion-${id}.svg`})))
     if (p.endsWith('/items.json')) return json(mockIcons(items,'item'))
     if (p.endsWith('/summoner-spells.json')) return json(mockIcons([[4,'闪现'],[7,'治疗'],[32,'雪球']],'spell'))
     if (p.endsWith('/perks.json')) return json(mockIcons([[8214,'召唤艾黎'],[8453,'复苏'],[8234,'迅捷'],[8210,'超然'],[8237,'焦灼'],[8444,'复苏之风'],[5008,'适应之力'],[5002,'护甲']],'perk').map((perk) => ({
@@ -1356,6 +1356,7 @@ try {
   await page.waitForFunction(()=>document.querySelector('#qa-mayhem-recommendations .sobp-augment-wrap .sobp-section-reveal').getBoundingClientRect().height<1)
   await mayhemPanel.getByRole('button',{name:'海克斯推荐：展开',exact:true}).click()
   await page.waitForFunction(()=>document.querySelector('#qa-mayhem-recommendations .sobp-augment-wrap .sobp-section-reveal').getBoundingClientRect().height>100)
+  assert.equal(await mayhemPanel.locator('.sobp-last-item').count(),10)
   await mayhemPanel.getByRole('button',{name:'后续成装推荐：展开全部',exact:true}).click()
   assert.equal(await mayhemPanel.locator('.sobp-last-item').count(),18)
   const itemGrid=await mayhemPanel.locator('.sobp-last-items').evaluate((node)=>{

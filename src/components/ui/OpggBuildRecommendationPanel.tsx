@@ -31,6 +31,20 @@ import '@/styles/OpggBuildRecommendationPanel.css'
 
 import { recommendationDelta } from '@/lib/recommendation-rates'
 const BaselineWinRate = createContext<number | null>(null)
+export interface RecommendationAssets {
+  items: Record<number, { name: string; iconPath: string; description: string; price: number; isBoots?: boolean }>
+  augments: Record<number, { name: string; iconPath: string; description: string; rarity: string }>
+}
+export interface RecommendationItemGroup {
+  id: string; label: string; baselineWinRate: number | null; coreItems: OpggItemBuild[]; lastItems: OpggItemBuild[]; boots: OpggItemBuild[]
+  profiles?: Array<{ id: string; label: string; routes: Array<{ id: string; label: string; baselineWinRate: number | null; lastItems: OpggItemBuild[]; boots: OpggItemBuild[] }> }>
+}
+const emptyAssets: RecommendationAssets = { items: {}, augments: {} }
+const RecommendationAssetContext = createContext<RecommendationAssets>(emptyAssets)
+function useItemInfo() {
+  const assets = useContext(RecommendationAssetContext)
+  return (id: number): RecommendationAssets['items'][number] => assets.items[id] ?? getItemInfo(id)
+}
 
 const MAX_RECOMMENDATION_ROWS = 5
 const OPGG_TIER_BASE_OPTIONS: Array<{ value: OpggTier; label: string }> = [
@@ -66,7 +80,9 @@ export interface RecommendationContext {
 }
 
 export interface BuildRecommendation {
-  itemGroups?: Array<{ id: string; label: string; baselineWinRate: number | null; coreItems: OpggItemBuild[]; lastItems: OpggItemBuild[]; boots: OpggItemBuild[] }>
+  itemGroups?: RecommendationItemGroup[]
+  assets?: RecommendationAssets
+  sourceLabel?: string
   mode: OpggMode
   modeLabel: string
   version: string
@@ -125,22 +141,26 @@ export function OpggBuildRecommendationPanel({
 }: OpggBuildRecommendationPanelProps) {
   const { t } = useI18n()
   const [itemGroupId, setItemGroupId] = useState('0')
+  const [profileId, setProfileId] = useState('')
+  const [routeId, setRouteId] = useState('')
   const itemGroups = recommendation?.itemGroups ?? []
   const itemGroup = itemGroups.find((group) => group.id === itemGroupId) ?? itemGroups[0]
+  const coreProfile = itemGroup?.profiles?.find((profile) => profile.id === profileId) ?? itemGroup?.profiles?.[0]
+  const route = coreProfile?.routes.find((route) => route.id === routeId) ?? coreProfile?.routes[0]
   const champion = getChampionById(context.championId)
   const championName = champion ? `${champion.title} ${champion.name}` : t('opgg.unrecognizedChampion')
   const queueText = recommendation?.modeLabel || (context.queueId > 0 ? getQueueName(context.queueId) : t('opgg.unknownQueue'))
   const positionText = recommendation?.position ?? context.position
   const modeTags = koreanMatchups
     ? ['OP.GG', '韩服单双排', formatPositionText(positionText), koreanMatchups.version && `${koreanMatchups.version} 版本`].filter(Boolean).join(' · ')
-    : [queueText, formatPositionText(positionText)].filter(Boolean).join(' · ')
+    : [queueText, formatPositionText(positionText), recommendation?.sourceLabel].filter(Boolean).join(' · ')
   const mayhem = isKiwiMode(context) || context.queueId === 2400
   const showAugments = mayhem || recommendation?.mode === 'arena'
   const showEarlyItems = mayhem || recommendation?.mode === 'ranked' || getQueue(context.queueId)?.mapId === 11
   const showPositionFilter = !!koreanMatchups || supportsPositionFilter(context, recommendation)
 
   return (
-    <BaselineWinRate.Provider value={recommendation?.baselineWinRate ?? null}><div className="sobp sobp--career">
+    <BaselineWinRate.Provider value={recommendation?.baselineWinRate ?? null}><RecommendationAssetContext.Provider value={recommendation?.assets ?? emptyAssets}><div className="sobp sobp--career">
       <CareerBackdrop />
       <div className="sobp-ambient" />
 
@@ -186,14 +206,18 @@ export function OpggBuildRecommendationPanel({
               {!mayhem && <RuneSection title={t('opgg.section.runes')} runes={recommendation?.runePages} championName={championName} modeLabel={recommendation?.modeLabel || queueText} />}
               <SpellSection title={t('opgg.section.spells')} builds={recommendation?.summonerSpells} limit={MAX_RECOMMENDATION_ROWS} />
             </div>
-              {itemGroup && <div className="sobp-build-filter"><span>出装流派</span><SonaSelect value={itemGroup.id} onChange={setItemGroupId} options={itemGroups.map((group) => ({ value: group.id, label: group.label }))} /><small>流派胜率 {formatPercent(itemGroup.baselineWinRate ?? undefined)} · ARAM.GG 海斗</small></div>}
+              {itemGroup && <div className="sobp-build-filter"><span>出装流派</span><SonaSelect value={itemGroup.id} onChange={(value)=>{setItemGroupId(value);setProfileId('');setRouteId('')}} options={itemGroups.map((group) => ({ value: group.id, label: group.label }))} />
+                {coreProfile && <><span>核心组合</span><SonaSelect value={coreProfile.id} onChange={(value)=>{setProfileId(value);setRouteId('')}} options={itemGroup.profiles!.map((profile)=>({value:profile.id,label:profile.label}))} /></>}
+                {route && <><span>购买路线</span><SonaSelect value={route.id} onChange={setRouteId} options={coreProfile!.routes.map((route)=>({value:route.id,label:route.label}))} /></>}
+                <small className="sobp-build-scope">核心选取率按流派统计，差值对比英雄胜率 {formatPercent(recommendation?.baselineWinRate ?? undefined)} · {route?`后续装备按当前路线统计，路线胜率 ${formatPercent(route.baselineWinRate ?? undefined)}`:'后续装备为单件总体统计'}</small>
+              </div>}
             {showEarlyItems && <>
               {!mayhem && <CompactEquipmentSection title="出门装推荐" builds={recommendation?.starterItems} />}
-              <CompactEquipmentSection title="鞋子推荐" builds={itemGroup?.boots ?? recommendation?.boots} />
+              <CompactEquipmentSection title="鞋子推荐" builds={route?.boots ?? itemGroup?.boots ?? recommendation?.boots} />
             </>}
               <div className="sobp-core-builds" data-testid="three-item-builds"><ItemSection title="核心出装" builds={(itemGroup?.coreItems ?? recommendation?.coreItems)?.filter((build) => build.ids.length === 3 && build.ids.every((id) => Number.isInteger(id) && id > 0) && new Set(build.ids).size === 3)} itemLimit={3} /></div>
             <div className="sobp-trend-wrap">
-              <LastItemTrendSection title="后续成装推荐" builds={itemGroup?.lastItems ?? recommendation?.lastItems} />
+              <LastItemTrendSection title="后续成装推荐" builds={route?.lastItems ?? itemGroup?.lastItems ?? recommendation?.lastItems} />
             </div>
             {!mayhem && <MatchupSection title={t('opgg.section.matchups')} matchups={recommendation?.matchups} />}
             {showAugments && !mayhem && <AugmentSection title={t('opgg.section.augments')} groups={recommendation?.augments} />}
@@ -205,7 +229,7 @@ export function OpggBuildRecommendationPanel({
         {recommendation?.warning && <PanelMessage warning>{recommendation.warning}</PanelMessage>}
         {!isLoading && !loadError && !recommendation && !koreanMatchups && <PanelMessage>{t('opgg.noData')}</PanelMessage>}
       </main>
-    </div></BaselineWinRate.Provider>
+    </div></RecommendationAssetContext.Provider></BaselineWinRate.Provider>
   )
 }
 
@@ -376,6 +400,7 @@ function splitSummaryMetric(value: string): { label: string; metric: string; kin
 
 function normalizeTierText(value: string): string {
   const tier = value.trim().replace(/^tier\s*/i, '')
+  if (/^(?:S{1,3}|[ABCDF])[+-]?$/i.test(tier)) return tier.toUpperCase()
   return tier ? `T${tier}` : 'T-'
 }
 
@@ -431,6 +456,7 @@ function Section({ title, children, empty = false, emptyText, count, toolbar, pa
 }
 
 function ItemSection({ title, builds, itemLimit }: { title: string; builds?: OpggItemBuild[]; itemLimit: number }) {
+  const getItemInfo = useItemInfo()
   const visibleBuilds = builds ?? []
   const maxRate = getMaxPickRate(visibleBuilds, 0.15)
 
@@ -460,6 +486,7 @@ function ItemSection({ title, builds, itemLimit }: { title: string; builds?: Opg
 }
 
 function CompactEquipmentSection({title,builds}:{title:string;builds?:OpggItemBuild[]}) {
+  const getItemInfo = useItemInfo()
   const entries=(builds ?? []).filter((build)=>build.ids.length>0 && build.ids.every((id)=>Number.isInteger(id) && id>0))
   return <div className="sobp-compact-equipment">
     <Section title={title} count={entries.length} empty={!entries.length}>
@@ -473,8 +500,9 @@ function CompactEquipmentSection({title,builds}:{title:string;builds?:OpggItemBu
 }
 
 function LastItemTrendSection({ title, builds }: { title: string; builds?: OpggItemBuild[] }) {
+  const getItemInfo = useItemInfo()
   const visibleItems = (builds ?? [])
-    .filter((build) => build.ids.length === 1)
+    .filter((build) => build.ids.length === 1 && !(getItemInfo(build.ids[0]).isBoots ?? /靴|鞋|足具|boots|shoes|treads|greaves/i.test(getItemInfo(build.ids[0]).name)))
     .flatMap((build, buildIndex) => build.ids.map((id, itemIndex) => ({
       id,
       key: `${buildIndex}-${itemIndex}-${id}`,
@@ -485,7 +513,7 @@ function LastItemTrendSection({ title, builds }: { title: string; builds?: OpggI
 
 
   return (
-    <Section title={title} empty={visibleItems.length === 0} count={visibleItems.length}>
+    <Section title={title} empty={visibleItems.length === 0} count={visibleItems.length} partialLimit={10}>
       {(limit)=><div className="sobp-last-items">
         {visibleItems.slice(0,limit).map((entry, index) => {
           const item = getItemInfo(entry.id)
@@ -669,6 +697,7 @@ function RuneSection({ title, runes, championName, modeLabel }: { title: string;
 const AUGMENT_TYPES = [[0,'全部'],[8,'棱彩'],[4,'黄金'],[1,'白银']] as const
 
 function AugmentSection({ title, groups }: { title: string; groups?: BuildRecommendation['augments'] }) {
+  const assets = useContext(RecommendationAssetContext)
   const [rarity, setRarity] = useState(0)
   const sorted=useMemo(()=>[...new Map((groups ?? []).flatMap((group) => group.items.map((item) => ({...item, rarity: group.rarity, rarityLabel: group.label ?? getAugmentRarityLabel(group.rarity)}))).map((item) => [item.id,item])).values()]
     .sort((a,b) => (Number.isFinite(b.winRate) ? b.winRate! : -1) - (Number.isFinite(a.winRate) ? a.winRate! : -1) || b.pickRate-a.pickRate || a.id-b.id),[groups])
@@ -689,7 +718,7 @@ function AugmentSection({ title, groups }: { title: string; groups?: BuildRecomm
     <Section title={title} empty={!entries.length} count={entries.length} toolbar={toolbar} partialLimit={12}>
       {(limit)=><div className="sobp-augment-grid">
         {entries.slice(0,limit).map((augment,index) => {
-          const info=getAugmentInfo(augment.id)
+          const info=assets.augments[augment.id] ?? getAugmentInfo(augment.id)
           return <div className="sobp-augment" key={augment.id} data-rarity={augment.rarity}>
             <BuildIcon src={info?.iconPath ?? ''} title={info?.name ?? String(augment.id)} description={info?.description ?? ''} subtitle={augment.rarityLabel} size={26} border={getAugmentBorder(info?.rarity)} />
             <div className="sobp-augment-info">
@@ -1000,8 +1029,8 @@ function getAugmentRarityLabel(rarity: number): string {
 }
 
 function getAugmentBorder(rarity: string | undefined): string {
-  if (rarity === 'kPrismatic') return '#b788ff'
-  if (rarity === 'kGold') return '#c8aa6e'
-  if (rarity === 'kSilver') return '#a09b8c'
+  if (rarity?.toLowerCase().includes('prismatic')) return '#b788ff'
+  if (rarity?.toLowerCase().includes('gold')) return '#c8aa6e'
+  if (rarity?.toLowerCase().includes('silver')) return '#a09b8c'
   return '#3c2e16'
 }

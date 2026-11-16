@@ -17,7 +17,7 @@ import { getAllChampions, getAugmentInfo, getChampionById, getItemInfo, getItemP
 import { OpggBuildRecommendationPanel, type BuildRecommendation, type RecommendationContext } from '@/components/ui/OpggBuildRecommendationPanel'
 import { lcu, LcuEventUri, type ChampSelectSession, type ItemSet, type ItemSetBlock, type LCUEventMessage, type RunePage, type RunePagePayload } from '@/lib/lcu'
 import { store } from '@/lib/store'
-import { aramggApi, type AramggChampionRecommendation, type AramggChampionStatEntry, type AramggMayhemAugments } from '@/lib/aramgg-api'
+import { aramkitApi } from '@/lib/aramkit-api'
 import {
   opggApi,
   mapAssignedPosition,
@@ -1448,7 +1448,7 @@ async function loadRecommendation(context: RecommendationContext, signal?: Abort
     : 'none'
 
   if (isKiwiMode(context)) {
-    return loadAramggKiwiRecommendation(context, mode, position, signal)
+    return aramkitApi.getChampionRecommendation(context.championId, context.gameVersion, signal)
   }
 
   const mainChampion = await getChampionWithVersionFallback({
@@ -1485,94 +1485,11 @@ async function loadRecommendation(context: RecommendationContext, signal?: Abort
   }
 }
 
-async function loadAramggKiwiRecommendation(
-  context: RecommendationContext,
-  mode: OpggMode,
-  position: OpggPosition,
-  signal?: AbortSignal,
-): Promise<BuildRecommendation | null> {
-  const [aramgg, mayhemAugments] = await Promise.all([
-    aramggApi.getChampionRecommendation(context.championId, { signal, includeStartingItems: false, includeBuilds: true }),
-    aramggApi.getMayhemAugmentsZhCn({ signal }).catch(() => ({} as AramggMayhemAugments)),
-  ])
-  const directBuild = (build: { ids: number[]; winRate: number | null; pickRate: number | null }, baselineWinRate: number | null): OpggItemBuild => ({
-    ids: build.ids, win: NaN, play: NaN, winRate: build.winRate, pick_rate: build.pickRate ?? NaN, baselineWinRate,
-  })
-  const baseline = toOptionalNumber(aramgg.championStats?.win_rate)
-  const itemGroups = (aramgg.itemGroups ?? []).map((group) => {
-    const coreItems = group.coreItems.map((build) => directBuild(build, group.winRate))
-    const lastItems = group.items.map((build) => directBuild(build, null))
-    const publishedIds = new Set([...coreItems, ...lastItems].flatMap((build) => build.ids))
-    const boots = [...publishedIds].filter((id) => /靴|鞋|足具|boots|shoes|treads|greaves/i.test(getItemInfo(id).name)).map((id) => directBuild({ ids:[id],winRate:null,pickRate:null },null))
-    const labels: Record<string,string> = { AD:'物理',AP:'法术',Bruiser:'战士',Lethality:'穿甲',Tank:'坦克',Support:'辅助',OnHit:'特效' }
-    return { id:group.id,label:group.label.split(' · ').map((part)=>labels[part]??part).join(' · '),baselineWinRate:group.winRate,coreItems,lastItems,boots }
-  })
-  const first = itemGroups[0]
-  return {
-    mode, modeLabel:getModeLabel(mode,context),version:aramgg.championStats?.version||context.gameVersion||'',position,
-    baselineWinRate:baseline,summary:getAramggSummaryLines(aramgg),
-    summonerSpells:(aramgg.summonerSpells??[]).map((build)=>directBuild(build,baseline)),starterItems:[],
-    boots:first?.boots??[],coreItems:first?.coreItems??[],lastItems:first?.lastItems??[],itemGroups,
-    prismItems:[],runePages:[],matchups:[],augments:mapAramggAugments(aramgg.augments,mayhemAugments),
-    warning:itemGroups.length?'':'海斗装备数据暂不可用。',
-  }
-}
-
-function getAramggSummaryLines(data: AramggChampionRecommendation): string[] {
-  const stats = data.championStats
-  return [
-    `总体胜率 ${formatRate(toOptionalNumber(stats?.win_rate))}`,
-    `登场 ${formatRate(toOptionalNumber(stats?.pick_rate))}`,
-    `Tier ${stats?.tier || '-'}`,
-  ]
-}
-
-function formatRate(value: number | null): string {
-  return value != null && Number.isFinite(value) ? `${(value * 100).toFixed(1)}%` : '-'
-}
-
-function toOptionalNumber(value: unknown): number | null {
-  if (value == null || value === '') return null
-  const numberValue = typeof value === 'number' ? value : Number(value)
-  return Number.isFinite(numberValue) ? numberValue : null
-}
-
-function toNumber(value: unknown): number {
-  const numberValue = typeof value === 'number' ? value : Number(value)
-  return Number.isFinite(numberValue) ? numberValue : 0
-}
-
 function getAugmentRaritySortValue(rarity: number): number {
   if (rarity === 8) return 0
   if (rarity === 4) return 1
   if (rarity === 1) return 2
   return 99
-}
-
-function normalizeAugmentRarity(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isFinite(value)) return value
-  if (typeof value !== 'string') return null
-
-  const normalized = value.toLowerCase()
-  if (normalized.includes('prismatic')) return 8
-  if (normalized.includes('gold')) return 4
-  if (normalized.includes('silver')) return 1
-
-  const numeric = Number(value)
-  return Number.isFinite(numeric) ? numeric : null
-}
-
-function normalizeMayhemAugmentRarity(value: unknown, mayhemAugments: AramggMayhemAugments): number | null {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return normalizeAugmentRarity(value)
-
-  const knownRarities = new Set(Object.values(mayhemAugments).map((augment) => augment.rarity))
-  if (knownRarities.has(4) || knownRarities.has(8)) return value
-
-  // Some data dumps use 0/1/2 instead of Riot's 1/4/8 rarity values.
-  if (value === 2) return 8
-  if (value === 1) return 4
-  if (value === 0) return 1
-  return value
 }
 
 function mapOpggAugments(augmentGroups: OpggAugmentGroup[]): BuildRecommendation['augments'] {
@@ -1589,42 +1506,6 @@ function mapOpggAugments(augmentGroups: OpggAugmentGroup[]): BuildRecommendation
       })),
     }))
     .sort((a, b) => getAugmentRaritySortValue(a.rarity) - getAugmentRaritySortValue(b.rarity))
-}
-
-function getAramggAugmentRarity(augmentId: number, mayhemAugments: AramggMayhemAugments): number | null {
-  return normalizeAugmentRarity(getAugmentInfo(augmentId)?.rarity)
-    ?? normalizeMayhemAugmentRarity(mayhemAugments[String(augmentId)]?.rarity, mayhemAugments)
-}
-
-function mapAramggAugments(augments: Record<string, AramggChampionStatEntry>, mayhemAugments: AramggMayhemAugments): BuildRecommendation['augments'] {
-  const groups = new Map<number, Array<{ id: number; pickRate: number; winRate?: number }>>()
-
-  Object.entries(augments).forEach(([id, augment]) => {
-    const augmentId = Number(id)
-    const rarity = getAramggAugmentRarity(augmentId, mayhemAugments)
-    if (!Number.isFinite(augmentId) || rarity == null) return
-
-    const items = groups.get(rarity) ?? []
-    items.push({
-      id: augmentId,
-      pickRate: toNumber(augment.pick_rate),
-      winRate: toOptionalNumber(augment.win_rate) ?? undefined,
-    })
-    groups.set(rarity, items)
-  })
-
-  return Array.from(groups.entries())
-    .sort(([a], [b]) => getAugmentRaritySortValue(a) - getAugmentRaritySortValue(b))
-    .map(([rarity, items]) => ({
-      rarity,
-      items: items
-        .sort((a, b) => (b.winRate ?? -1) - (a.winRate ?? -1) || b.pickRate - a.pickRate)
-        .map((augment) => ({
-          id: augment.id,
-          pickRate: augment.pickRate,
-          winRate: augment.winRate,
-        })),
-    }))
 }
 
 function getRecommendationMeta(champion: OpggChampion): BuildRecommendation['meta'] {

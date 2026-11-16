@@ -1088,6 +1088,7 @@
 .sobp-build-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: rgb(var(--sona-accent-rgb)); font-size: 11px; }
 .sobp-build-filter > .sona-select { width: 190px; max-width: 100%; }
 .sobp-build-filter small { color: rgb(var(--sona-muted-rgb)); font-size: 10px; }
+.sobp-build-filter .sobp-build-scope { flex: 1 0 100%; }
 
 .sobp-compact-equipment { margin-top: 10px; }
 .sobp-equipment-cards { display: grid; grid-template-columns: repeat(auto-fill,minmax(min(100%,250px),1fr)); gap: 5px; }
