@@ -1209,14 +1209,17 @@ try {
     const {OpggBuildRecommendationPanel}=await import('/src/components/ui/OpggBuildRecommendationPanel.tsx')
     const host=document.createElement('div');host.id='qa-mayhem-recommendations';document.body.append(host)
     const root=createRoot(host);window.qaMayhemRoot=root
-    root.render((React.createElement ?? React.default.createElement)(OpggBuildRecommendationPanel,{
+    const props={
       context:{championId:16,queueId:2400,gameMode:'KIWI',position:'none',gameVersion:'fixture'},
       recommendation:{mode:'aram',modeLabel:'海克斯大乱斗',version:'fixture',position:'none',baselineWinRate:.5,summary:[],
         coreItems:[{ids:[6617,3504,6621],win:51,play:100,pick_rate:.2}],lastItems:[{ids:[6617],win:49,play:100,pick_rate:.3}],
         starterItems:[],boots:[],prismItems:[],runePages:[],summonerSpells:[],matchups:[],
         augments:[{rarity:1,items:[{id:101,pickRate:.2,winRate:.55},{id:102,pickRate:.1,winRate:0},{id:103,pickRate:.1}]}]},
       isLoading:false,loadError:'',selectedTier:'all',onTierChange:()=>{},onPositionChange:()=>{},onClose:()=>{}
-    }))
+    }
+    window.qaMayhemProps=props
+    window.qaMayhemRender=()=>root.render((React.createElement ?? React.default.createElement)(OpggBuildRecommendationPanel,window.qaMayhemProps))
+    window.qaMayhemRender()
   })
   const mayhemPanel=page.locator('#qa-mayhem-recommendations')
   await mayhemPanel.locator('.sobp-core-builds .sobp-win-delta').waitFor({state:'attached'})
@@ -1224,6 +1227,25 @@ try {
   assert.equal(await mayhemPanel.locator('.sobp-last-item .sobp-win-delta.is-negative').textContent(),'(-1.0%)')
   const augmentDeltas=await mayhemPanel.locator('.sobp-augment-grid .sobp-win-delta').allTextContents()
   assert.deepEqual(augmentDeltas,['(+5.0%)','(-50.0%)'])
+  assert.equal(await mayhemPanel.getByText('符文搭配',{exact:true}).count(),0)
+  assert.equal(await mayhemPanel.getByText('优势 / 劣势对局',{exact:true}).count(),0)
+  assert.equal(await mayhemPanel.locator('.sobp-augment-grid .sobp-stat-track').first().evaluate((node)=>getComputedStyle(node).display),'none')
+  await page.evaluate(()=>{
+    window.qaMayhemProps={...window.qaMayhemProps,recommendation:{...window.qaMayhemProps.recommendation,augments:[8,4,1].map((rarity,g)=>({rarity,items:Array.from({length:7},(_,i)=>({id:1000+g*10+i,pickRate:.1,winRate:.5+(i*3+g)/100}))}))}}
+    window.qaMayhemRender()
+  })
+  await page.waitForFunction(()=>document.querySelectorAll('#qa-mayhem-recommendations .sobp-augment').length===21)
+  const allRates=(await mayhemPanel.locator('.sobp-augment .sobp-win-rate strong').allTextContents()).map(parseFloat)
+  assert.deepEqual(allRates,[...allRates].sort((a,b)=>b-a))
+  for (const [label,rarity] of [['棱彩',8],['黄金',4],['白银',1]]) {
+    await mayhemPanel.getByRole('button',{name:label,exact:true}).evaluate((node)=>node.click())
+    await page.waitForFunction((r)=>[...document.querySelectorAll('#qa-mayhem-recommendations .sobp-augment')].length===7&&[...document.querySelectorAll('#qa-mayhem-recommendations .sobp-augment')].every((node)=>Number(node.dataset.rarity)===r),rarity)
+    assert.equal(await mayhemPanel.getByRole('button',{name:label,exact:true}).getAttribute('aria-pressed'),'true')
+  }
+  await mayhemPanel.getByRole('button',{name:'全部',exact:true}).evaluate((node)=>node.click())
+  await page.waitForFunction(()=>document.querySelectorAll('#qa-mayhem-recommendations .sobp-augment').length===21)
+  await mayhemPanel.evaluate((node)=>{node.style.cssText='position:fixed;inset:12px;z-index:2147483647;background:#111;height:calc(100vh - 24px)'})
+  await mayhemPanel.screenshot({path:path.join(out,'海斗紧凑海克斯筛选_模拟数据.png')})
   await page.evaluate(()=>{window.qaMayhemRoot.unmount();document.getElementById('qa-mayhem-recommendations').remove()})
   assert.equal(errors.length,0,errors.join('\n'))
   assert.equal(writes.length,0,writes.join('\n'))

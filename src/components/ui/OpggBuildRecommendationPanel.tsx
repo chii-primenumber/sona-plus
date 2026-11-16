@@ -127,7 +127,8 @@ export function OpggBuildRecommendationPanel({
   const modeTags = koreanMatchups
     ? ['OP.GG', '韩服单双排', formatPositionText(positionText), koreanMatchups.version && `${koreanMatchups.version} 版本`].filter(Boolean).join(' · ')
     : [queueText, formatPositionText(positionText)].filter(Boolean).join(' · ')
-  const showAugments = isKiwiMode(context) || recommendation?.mode === 'arena'
+  const mayhem = isKiwiMode(context) || context.queueId === 2400
+  const showAugments = mayhem || recommendation?.mode === 'arena'
   const showPositionFilter = !!koreanMatchups || supportsPositionFilter(context, recommendation)
 
   return (
@@ -171,15 +172,15 @@ export function OpggBuildRecommendationPanel({
           </>
         ) : (
           <>
-            <div className="sobp-grid">
-              <RuneSection title={t('opgg.section.runes')} runes={recommendation?.runePages} championName={championName} modeLabel={recommendation?.modeLabel || queueText} />
+            <div className={`sobp-grid${mayhem ? " sobp-grid--mayhem" : ""}`}>
+              {!mayhem && <RuneSection title={t('opgg.section.runes')} runes={recommendation?.runePages} championName={championName} modeLabel={recommendation?.modeLabel || queueText} />}
               <SpellSection title={t('opgg.section.spells')} builds={recommendation?.summonerSpells} limit={MAX_RECOMMENDATION_ROWS} />
             </div>
               <div className="sobp-core-builds" data-testid="three-item-builds"><ItemSection title="核心出装" builds={recommendation?.coreItems?.filter((build) => build.ids.length === 3 && build.ids.every((id) => Number.isInteger(id) && id > 0) && new Set(build.ids).size === 3)} itemLimit={3} /></div>
             <div className="sobp-trend-wrap">
               <LastItemTrendSection title="后续成装推荐" builds={recommendation?.lastItems} />
             </div>
-            <MatchupSection title={t('opgg.section.matchups')} matchups={recommendation?.matchups} />
+            {!mayhem && <MatchupSection title={t('opgg.section.matchups')} matchups={recommendation?.matchups} />}
             {showAugments && <AugmentSection title={t('opgg.section.augments')} groups={recommendation?.augments} />}
           </>
         )}
@@ -613,41 +614,31 @@ function RuneSection({ title, runes, championName, modeLabel }: { title: string;
 }
 
 function AugmentSection({ title, groups }: { title: string; groups?: BuildRecommendation['augments'] }) {
-  const visibleGroups = groups ?? []
-
-  return (
-    <div className="sobp-augment-wrap">
-      <Section title={title} empty={visibleGroups.length === 0}>
-        {visibleGroups.map((group) => (
-          <div className="sobp-augment-group" key={group.rarity}>
-            <div className="sobp-augment-rarity">{group.label ?? getAugmentRarityLabel(group.rarity)}</div>
-            <div className="sobp-augment-grid">
-              {group.items.map((augment) => {
-                const info = getAugmentInfo(augment.id)
-                return (
-                  <div className="sobp-augment" key={augment.id}>
-                    <BuildIcon
-                      src={info?.iconPath ?? ''}
-                      title={info?.name ?? String(augment.id)}
-                      description={info?.description ?? ''}
-                      subtitle={group.label ?? getAugmentRarityLabel(group.rarity)}
-                      size={40}
-                      border={getAugmentBorder(info?.rarity)}
-                    />
-                    <div className="sobp-augment-info">
-                      <div className="sobp-augment-name">{info?.name ?? String(augment.id)}</div>
-                      <RecommendationRates pickRate={augment.pickRate} winRate={augment.winRate} maxRate={1} />
-                      {Number.isFinite(augment.averagePlace) && <div className="sobp-augment-meta">均排 {formatPlace(augment.averagePlace)}</div>}
-                    </div>
-                  </div>
-                )
-              })}
+  const [rarity, setRarity] = useState(0)
+  const entries = [...new Map((groups ?? []).flatMap((group) => group.items.map((item) => ({...item, rarity: group.rarity, rarityLabel: group.label ?? getAugmentRarityLabel(group.rarity)}))).map((item) => [item.id,item])).values()]
+    .filter((item) => !rarity || item.rarity === rarity)
+    .sort((a,b) => (Number.isFinite(b.winRate) ? b.winRate! : -1) - (Number.isFinite(a.winRate) ? a.winRate! : -1) || b.pickRate-a.pickRate || a.id-b.id)
+  return <div className="sobp-augment-wrap sobp-augments-compact">
+    <div className="sobp-augment-filters" role="group" aria-label="海克斯类型">
+      {[[0,'全部'],[8,'棱彩'],[4,'黄金'],[1,'白银']].map(([value,label]) => <button type="button" key={value} aria-pressed={rarity===value} onClick={()=>setRarity(Number(value))}>{label}</button>)}
+      <small>{entries.length} 个 · 胜率排序</small>
+    </div>
+    <Section title={title} empty={!entries.length}>
+      <div className="sobp-augment-grid">
+        {entries.map((augment,index) => {
+          const info=getAugmentInfo(augment.id)
+          return <div className="sobp-augment" key={augment.id} data-rarity={augment.rarity}>
+            <BuildIcon src={info?.iconPath ?? ''} title={info?.name ?? String(augment.id)} description={info?.description ?? ''} subtitle={augment.rarityLabel} size={26} border={getAugmentBorder(info?.rarity)} />
+            <div className="sobp-augment-info">
+              <div className="sobp-augment-name"><small>#{index+1}</small> {info?.name ?? String(augment.id)} <small>{augment.rarityLabel}</small></div>
+              <RecommendationRates pickRate={augment.pickRate} winRate={augment.winRate} maxRate={1} />
+              {Number.isFinite(augment.averagePlace) && <div className="sobp-augment-meta">均排 {formatPlace(augment.averagePlace)}</div>}
             </div>
           </div>
-        ))}
-      </Section>
-    </div>
-  )
+        })}
+      </div>
+    </Section>
+  </div>
 }
 
 function RankBadge({ rank }: { rank: number }) {

@@ -1618,7 +1618,7 @@ function mapOpggAugments(augmentGroups: OpggAugmentGroup[]): BuildRecommendation
   return augmentGroups
     .map((group) => ({
       rarity: group.rarity,
-      items: group.augments.slice(0, 5).map((augment) => ({
+      items: group.augments.map((augment) => ({
         id: augment.id,
         pickRate: augment.pick_rate,
         winRate: Number.isFinite(augment.win) && augment.play > 0 && augment.win >= 0 && augment.win <= augment.play
@@ -1658,7 +1658,6 @@ function mapAramggAugments(augments: Record<string, AramggChampionStatEntry>, ma
       rarity,
       items: items
         .sort((a, b) => (b.winRate ?? -1) - (a.winRate ?? -1) || b.pickRate - a.pickRate)
-        .slice(0, 5)
         .map((augment) => ({
           id: augment.id,
           pickRate: augment.pickRate,
