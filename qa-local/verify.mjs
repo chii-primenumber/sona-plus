@@ -5,6 +5,7 @@ import path from 'node:path'
 import fs from 'node:fs/promises'
 import { execFileSync } from 'node:child_process'
 import { verifyUiOptimizations } from './verify-ui-optimizations.mjs'
+import { verifyCompareAndTooltip } from './verify-compare-and-tooltip.mjs'
 import { verifyCareerBackground } from './verify-career-background.mjs'
 import { verifyHistoryTheme } from './verify-history-theme.mjs'
 import { verifyAugmentSwitch } from './verify-augment-switch.mjs'
@@ -53,7 +54,7 @@ const makeGame = (n) => {
       totalHeal:1500+i*712,totalHealsOnTeammates:i===0?8450:0,totalDamageShieldedOnTeammates:i===0?4190:250*i,
       damageDealtToObjectives:1365+i*630,damageDealtToTurrets:360+i*233,timeCCingOthers:18+i*3, damageSelfMitigated:6300,
       item0:3158,item1:6617,item2:3504,item3:6621,item4:n%2?3089:0,item5:n%3?3020:0,item6:3364,
-      spell1Id:4,spell2Id:aram?32:7,perks:{statPerks:{offense:5008,flex:5008,defense:5002},styles:[
+      spell1Id:4,spell2Id:aram?32:7,perks:queueId===2400?{styles:[{style:0,selections:[{perk:0}]},{style:0,selections:[]}]}:{statPerks:{offense:5008,flex:5008,defense:5002},styles:[
         {style:8200,selections:[{perk:8214,var1:1234,var2:567,var3:0},{perk:8234},{perk:8210},{perk:8237}]},
         {style:8400,selections:[{perk:8453,var1:0},{perk:8444}]},
       ]},
@@ -261,7 +262,15 @@ try {
     return route.continue()
   })
   await page.goto(`${origin}/qa-local/index.html`)
-  if (process.env.SONA_CAREER_ONLY) {
+  if (process.env.SONA_UI39_ONLY) {
+    await page.getByPlaceholder(/名字#Tag/).fill('练习星轨#DEMO')
+    await page.getByRole('button',{name:'查询战绩',exact:true}).click()
+    const profile=page.getByTestId('player-history');await profile.locator('.rh-match').first().waitFor()
+    await verifyCompareAndTooltip(page,profile,games,out)
+    await page.keyboard.press('Escape');await profile.waitFor({state:'hidden'})
+    await verifyMayhemDeltas(page)
+    assert.equal(errors.length,0,errors.join('\n'))
+  } else if (process.env.SONA_CAREER_ONLY) {
     await verifyCareerBackground(page)
     await page.getByPlaceholder(/名字#Tag/).fill('练习星轨#DEMO')
     await page.getByRole('button',{name:'查询战绩',exact:true}).click()
@@ -357,6 +366,10 @@ try {
   const settings = page.getByTestId('history-display-settings')
   const tooltip = page.getByRole('tooltip')
   await profileView.locator('.rh-match').first().waitFor()
+  const mayhemRunes=profileView.locator('[data-match-id="HN1:99000001"] .rh-runes-spells')
+  assert.equal(await mayhemRunes.locator('img').count(),2)
+  assert.equal(await mayhemRunes.locator('.rh-runes-detail-button').count(),0)
+  assert.deepEqual(await mayhemRunes.evaluate((node)=>[...node.childNodes].filter((child)=>child.nodeType===Node.TEXT_NODE&&child.textContent.trim()).map((child)=>child.textContent.trim())),[])
   const firstHero = profileView.locator('.rh-match-hero img').first()
   await firstHero.hover()
   await tooltip.getByText('英雄 · 索拉卡',{exact:true}).waitFor()
@@ -654,6 +667,7 @@ try {
   assert.equal(encounterIcons.length, 9)
   assert.ok(encounterIcons.every((src) => src.includes('/profile-icons/')))
   await verifyHistoryTheme(page,profileView,out)
+  await verifyCompareAndTooltip(page,profileView,games,out)
   await profileView.screenshot({path:path.join(out,'个人战绩_模拟数据.png')})
   const firstMatch = profileView.locator('.rh-match').first()
   assert.equal(await firstMatch.getByRole('button',{name:'下载回放',exact:true}).textContent(),'')

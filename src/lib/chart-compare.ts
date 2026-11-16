@@ -1,8 +1,7 @@
 /**
  * 玩家对比（DSH 优化版）
  *
- * 不做额外请求：两名玩家的数据都来自同一批已加载对局，
- * 因此样本、模式、时间窗口天然一致。样本数不同时以较小值提示。
+ * 默认比较同一批已加载对局；手动查询对象可传入其独立战绩样本。
  */
 import { buildRadarProfile, type RadarProfile } from './chart-radar'
 import { mean, riotName, summarize, toHistoryMatches, type HistoryMatch } from './history-model'
@@ -86,24 +85,26 @@ export function comparePlayers(
   aPuuid: string,
   bPuuid: string,
   system: PlayerScoreSystem,
+  bGames: SgpGameSummaryLol[] = games,
 ): PlayerCompareResult | null {
   if (!aPuuid || !bPuuid || aPuuid === bPuuid) return null
   // 雷达固定使用 Sona 八维：Akari 的九项按满分归一化后大多贴近 0，画出来是一条针，
   // 不适合作为形状；综合分仍按当前机制计算。
   const a = buildRadarProfile(games, aPuuid, 'sona')
-  const b = buildRadarProfile(games, bPuuid, 'sona')
+  const b = buildRadarProfile(bGames, bPuuid, 'sona')
   if (!a || !b) return null
   const aMatches = toHistoryMatches(games, aPuuid)
-  const bMatches = toHistoryMatches(games, bPuuid)
+  const bMatches = toHistoryMatches(bGames, bPuuid)
   if (!aMatches.length || !bMatches.length) return null
-  const sharedGames = aMatches.filter((match) => bMatches.some((other) => other.id === match.id)).length
+  const bIds = new Set(bMatches.map((match) => match.id))
+  const sharedGames = aMatches.filter((match) => bIds.has(match.id)).length
   const aScore = calculatePlayerScore(aMatches.map((match) => match.game), aPuuid, system)?.score ?? null
   const bScore = calculatePlayerScore(bMatches.map((match) => match.game), bPuuid, system)?.score ?? null
   return {
     a,
     b,
     aName: playerName(games, aPuuid),
-    bName: playerName(games, bPuuid),
+    bName: playerName(bGames, bPuuid),
     aScore,
     bScore,
     rows: buildCompareRows(aMatches, bMatches, aScore, bScore),

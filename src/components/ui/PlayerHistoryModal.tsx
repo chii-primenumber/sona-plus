@@ -203,7 +203,7 @@ function PlayerHistoryContent({ open, target, defaultQueueId, onSelectPlayer, on
       </div>
       {show('ranks') && <RankCards ranks={ranks} status={rankStatus} />}
       <div className="rh-header-actions">
-        <HistoryAssetTooltip title="玩家对比" compact asChild><button type="button" className="rh-button rh-icon-button" aria-label="玩家对比" onClick={() => setShowCompare(true)} disabled={!compareCandidates.length}><span aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true"><rect x="1.5" y="3" width="5.5" height="10" rx="1" /><rect x="9" y="3" width="5.5" height="10" rx="1" /></svg></span></button></HistoryAssetTooltip>
+        <HistoryAssetTooltip title="玩家对比" compact asChild><button type="button" className="rh-button rh-icon-button" aria-label="玩家对比" onClick={() => setShowCompare(true)}><span aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true"><rect x="1.5" y="3" width="5.5" height="10" rx="1" /><rect x="9" y="3" width="5.5" height="10" rx="1" /></svg></span></button></HistoryAssetTooltip>
         <HistoryAssetTooltip title="刷新" compact asChild><button type="button" className="rh-button rh-icon-button" aria-label="刷新" onClick={refresh} disabled={pages.loading}><span aria-hidden="true"><RefreshIcon /></span></button></HistoryAssetTooltip>
         <HistoryAssetTooltip title="显示设置" compact asChild><button type="button" className="rh-button rh-icon-button" aria-label="显示设置" onClick={() => setShowSettings(true)}><span aria-hidden="true"><SettingsIcon /></span></button></HistoryAssetTooltip>
       </div>
@@ -275,6 +275,6 @@ function PlayerHistoryContent({ open, target, defaultQueueId, onSelectPlayer, on
       setSearchText('')
       onSelectPlayer(player)
     }} />
-    <HistoryCompareModal open={open && showCompare} onClose={() => setShowCompare(false)} games={filteredGames} puuid={target.puuid} system={scoreSystem} candidates={compareCandidates} />
+    <HistoryCompareModal open={open && showCompare} onClose={() => setShowCompare(false)} games={filteredGames} puuid={target.puuid} system={scoreSystem} candidates={compareCandidates} serverId={target.serverId} queueId={queueId} count={batchSize} filters={{championId,position,outcome:result,hideAborted}} sourceLoading={pages.loading} onRefresh={refresh} />
   </div>
 }

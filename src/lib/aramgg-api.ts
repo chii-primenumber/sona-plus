@@ -4,6 +4,7 @@ export interface AramggRequestOptions {
   signal?: AbortSignal
   timeoutMs?: number
   includeStartingItems?: boolean
+  includeBuilds?: boolean
 }
 
 export interface AramggMayhemAugment {
@@ -132,11 +133,63 @@ export interface AramggCoreItemBuild {
 }
 
 export interface AramggChampionRecommendation {
+  itemGroups?: AramggBuildGroup[]
+  summonerSpells?: AramggPublicBuild[]
   championStats: AramggChampionStats | null
   augments: Record<string, AramggChampionStatEntry>
   coreItemBuilds: AramggCoreItemBuild[]
   items: Record<string, AramggChampionStatEntry>
   starterItems?: Array<{ ids: number[] }>
+}
+
+export interface AramggPublicBuild { ids: number[]; winRate: number | null; pickRate: number | null }
+export interface AramggBuildGroup { id: string; label: string; winRate: number | null; coreItems: AramggPublicBuild[]; items: AramggPublicBuild[] }
+
+/** Inert page parsing: keep per-archetype scopes and never infer unpublished single-item rates. */
+export function parseAramggMayhemBuilds(html: string): { groups: AramggBuildGroup[]; spells: AramggPublicBuild[] } {
+  const template = document.createElement('template'); template.innerHTML = html
+  const root = template.content, groups: AramggBuildGroup[] = [], spells: AramggPublicBuild[] = []
+  const rate = (text: string, label: string) => {
+    const value = text.match(new RegExp(`${label}\\s*:\\s*(\\d+(?:\\.\\d+)?)\\s*%`, 'i'))
+    const number = value ? Number(value[1]) : NaN
+    return Number.isFinite(number) && number >= 0 && number <= 100 ? number / 100 : null
+  }
+  const ids = (node: Element, kind = 'item') => Array.from(node.querySelectorAll('img')).flatMap((image) => {
+    const match = image.getAttribute('src')?.match(new RegExp(`/${kind}-icons/(\\d+)\\.(?:png|webp|svg|jpg)`, 'i'))
+    return match && Number(match[1]) > 0 ? [Number(match[1])] : []
+  })
+  const builds = root.querySelector('[data-champion-builds]')
+  if (builds) for (const panel of builds.querySelectorAll('[data-build-panel]')) {
+    const id = panel.getAttribute('data-build-panel') ?? ''
+    const tab = Array.from(builds.querySelectorAll('[data-build-index]')).find((node) => node.getAttribute('data-build-index') === id)
+    if (!tab) continue
+    const text = tab.textContent ?? '', match = text.match(/(\d+(?:\.\d+)?)\s*%/)
+    const baseline = match ? Number(match[1]) / 100 : NaN
+    const tags = Array.from(tab.querySelectorAll('span')).filter((node) => !node.children.length).map((node) => node.textContent?.trim() ?? '').filter((label) => label && !label.includes('%'))
+    const group: AramggBuildGroup = { id, label: tags.length ? tags.join(' · ') : text.replace(/\d+(?:\.\d+)?\s*%/g, '').trim().replace(/\s+/g, ' · '), winRate: Number.isFinite(baseline) && baseline >= 0 && baseline <= 1 ? baseline : null, coreItems: [], items: [] }
+    for (const heading of panel.querySelectorAll('h3')) {
+      const title = heading.textContent?.trim() ?? '', content = heading.nextElementSibling
+      if (!content) continue
+      if (/^Core Items$/i.test(title)) for (const row of content.children) {
+        const itemIds = ids(row)
+        if (itemIds.length !== 3 || new Set(itemIds).size !== 3) continue
+        const text = row.textContent ?? ''
+        group.coreItems.push({ ids: itemIds, winRate: rate(text, 'Win Rate'), pickRate: rate(text, 'Pick Rate') })
+      }
+      if (/^Situational Items/i.test(title)) for (const id of new Set(ids(content))) group.items.push({ ids: [id], winRate: null, pickRate: null })
+    }
+    if (group.label && (group.coreItems.length || group.items.length)) groups.push(group)
+  }
+  for (const section of root.querySelectorAll('[data-recommendation-group]')) {
+    if (!section.querySelector('h2')?.textContent?.includes('Summoner Spells')) continue
+    for (const row of section.querySelectorAll('article')) {
+      const spellIds = ids(row, 'summoner-spell')
+      if (spellIds.length !== 2) continue
+      const text = row.textContent ?? ''
+      spells.push({ ids: spellIds, winRate: rate(text, 'Win Rate'), pickRate: rate(text, 'Pick Rate') })
+    }
+  }
+  return { groups, spells }
 }
 
 export class AramggApiError extends Error {
@@ -351,15 +404,20 @@ export class AramggDataApi {
       return null
     })
     const [details, ranking, html] = await Promise.all([
-      this.request<AramggChampionDetails>(`/data/champion-details/${championId}.json`, options),
+      this.request<AramggChampionDetails>(`/data/champion-details/${championId}.json`, options).catch(() => null),
       rankingPromise,
-      options.includeStartingItems === false ? Promise.resolve('') : this.request<string>(`/en/champion-stats/${championId}`, options, true).catch((error)=>{
+      options.includeStartingItems === false && !options.includeBuilds ? Promise.resolve('') : this.request<string>(`/en/champion-stats/${championId}`, options, true).catch((error)=>{
         console.warn('[ARAMGG] Mayhem starting combinations unavailable:',error)
         return ''
       }),
     ])
-    const parsed = parseAramggChampionDetails(details, ranking, championId)
-    parsed.starterItems = parseAramggStartingItems(html)
+    if (!details && !html) throw new Error('海斗推荐数据暂不可用。')
+    const parsed = parseAramggChampionDetails(details ?? { championId: String(championId), championAugments: null }, ranking, championId)
+    if (options.includeStartingItems !== false) parsed.starterItems = parseAramggStartingItems(html)
+    if (options.includeBuilds) {
+      const builds = parseAramggMayhemBuilds(html)
+      parsed.itemGroups = builds.groups; parsed.summonerSpells = builds.spells
+    }
 
     console.groupCollapsed(`[ARAMGG] champion ${championId} parsed recommendation`)
     console.log('summary:', {

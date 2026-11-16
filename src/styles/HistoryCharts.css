@@ -137,9 +137,10 @@
 .rh-chart-card > .rh-chart-note { padding: 0 14px 14px; }
 
 /* 对比弹窗 */
-.rh-compare { display: flex; flex-direction: column; min-height: 100%; }
+.rh-compare { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .rh-compare-pick {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 14px;
   padding: 12px 16px;
@@ -186,3 +187,14 @@
 .rh-compare-table .is-higher { color: rgb(var(--sona-accent-rgb)); font-weight: 650; }
 .rh-compare-delta { color: var(--rh-muted); font-size: 11px; }
 .rh-compare .rh-muted { padding: 14px 16px; }
+.rh-compare-search { display: flex; align-items: center; gap: 5px; flex: 1 1 250px; min-width: 0; max-width: 420px; }
+.rh-compare-search input { flex: 1; min-width: 0; width: 100%; padding: 5px 8px; border: 1px solid var(--rh-line); border-radius: 3px; background: rgb(var(--sona-base-rgb) / .6); color: var(--rh-ink); }
+.rh-compare-search input::placeholder { color: var(--rh-muted); }
+.rh-compare .rh-compare-refresh { margin-left: auto; }
+.rh-compare .rh-compare-samples { padding: 0; flex: 1 0 100%; font-size: 11px; }
+.rh-compare-status { margin: 8px 16px; }
+.rh-compare-choices { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 16px; max-height: 160px; overflow: auto; }
+.rh-compare-search button svg, .rh-compare-refresh svg { width: 16px; height: 16px; }
+.rh-compare .rh-compare-body { flex: 1; min-height: 0; overflow: auto; }
+.rh-compare > .rh-chart-head, .rh-compare-pick { flex-shrink: 0; }
+@media (max-width: 620px) { .rh-compare-pick label { flex: 1 1 100%; } .rh-compare-pick select { flex: 1; min-width: 0; } }

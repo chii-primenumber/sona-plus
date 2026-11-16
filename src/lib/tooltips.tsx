@@ -11,6 +11,7 @@ let activeText = ''
 export function initSonaTooltips() {
   if (initialized) return
   initialized = true
+  const dismissed = new WeakSet<HTMLElement>()
   const removalObserver = new MutationObserver(() => { if (active && !active.isConnected) hide() })
   function hide() {
     if (!active) return
@@ -24,6 +25,8 @@ export function initSonaTooltips() {
     if (!(element instanceof HTMLElement) || !element.closest(PLUGIN_SURFACES)) { hide(); return }
     const text = element.getAttribute('title') || element.dataset.sonaTooltip
     if (!text) { hide(); return }
+    if (event instanceof MouseEvent && event.type === 'mouseover' && !(event.relatedTarget instanceof Node && element.contains(event.relatedTarget))) dismissed.delete(element)
+    if (dismissed.has(element)) { hide(); return }
     if (active === element && activeText === text) return
     if (element.hasAttribute('title')) {
       element.dataset.sonaTooltip = text
@@ -44,14 +47,25 @@ export function initSonaTooltips() {
     }))
   }
   function leave(event: MouseEvent | FocusEvent) {
+    const element = event.target instanceof Element ? event.target.closest<HTMLElement>('[title], [data-sona-tooltip]') : null
+    if (element && !(event.relatedTarget instanceof Node && element.contains(event.relatedTarget))) dismissed.delete(element)
     if (active && !(event.relatedTarget instanceof Node && active.contains(event.relatedTarget))) hide()
+  }
+  function activate(event: Event) {
+    const element = event.target instanceof Element ? event.target.closest<HTMLElement>('[title], [data-sona-tooltip]') : null
+    if (element?.closest(PLUGIN_SURFACES)) { dismissed.add(element); hide() }
+  }
+  function key(event: KeyboardEvent) {
+    if (event.key === 'Enter' || event.key === ' ') activate(event)
+    else if (event.key === 'Escape') { if (active) dismissed.add(active); hide() }
   }
   document.addEventListener('mouseover', show, true)
   document.addEventListener('focusin', show, true)
   document.addEventListener('mouseout', leave, true)
   document.addEventListener('focusout', leave, true)
-  document.addEventListener('pointerdown', hide, true)
-  document.addEventListener('keydown', hide, true)
+  document.addEventListener('pointerdown', activate, true)
+  document.addEventListener('click', activate, true)
+  document.addEventListener('keydown', key, true)
   document.addEventListener('visibilitychange', () => { if (document.hidden) hide() })
   window.addEventListener('blur', hide)
 }

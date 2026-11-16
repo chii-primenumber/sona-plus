@@ -75,6 +75,8 @@ export interface OpggArenaSummary {
 }
 
 export interface OpggItemBuild {
+  /** Explicit published rate when the source does not publish win/game counts. */
+  winRate?: number | null
   /** null disables comparison for a different data scope. */
   baselineWinRate?: number | null
   ids: number[]

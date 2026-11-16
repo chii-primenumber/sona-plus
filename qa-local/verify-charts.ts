@@ -10,6 +10,7 @@ import { calculateAkariGameTrendScore } from '../src/lib/akari-score'
 import { normalizeAkariBreakdown, normalizeSonaBreakdown } from '../src/lib/chart-radar'
 import {
   buildCompareRows,
+  comparePlayers,
   compareHighlight,
   formatCompareDelta,
   formatCompareValue,
@@ -125,6 +126,16 @@ assert.equal(formatCompareDelta(winRow, 'akari').endsWith('pp'), true)
 assert.equal(compareHighlight(scoreRow), 'a')
 assert.equal(compareHighlight({ key: 'x', label: 'x', a: 1, b: 1, format: 'decimal', higherIsBetter: true }), null)
 assert.equal(formatCompareValue(null, 'ratio', 'sona'), '—')
+const independentGames = games.slice(0, 1).map((entry) => ({ ...entry, json: { ...entry.json, gameId: entry.json.gameId + 1000,
+  participants: entry.json.participants.map((player) => player.puuid === 'ally-b1' ? { ...player, puuid: 'manual-other', riotIdGameName: '手动玩家', riotIdTagline: 'TEST' } : player),
+} }))
+assert.equal(comparePlayers(games, 'me', 'manual-other', 'akari'), null)
+const independent = comparePlayers(games, 'me', 'manual-other', 'akari', independentGames)!
+assert.ok(independent)
+assert.equal(independent.a.validGames, 3)
+assert.equal(independent.b.validGames, 1)
+assert.equal(independent.sharedGames, 0)
+assert.equal(independent.bName, '手动玩家#TEST')
 
 // 汇总样本与胜率口径
 const summary = summarize(matches)

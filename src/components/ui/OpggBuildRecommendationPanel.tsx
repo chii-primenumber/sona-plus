@@ -1,4 +1,4 @@
-import { createContext, useContext, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { CareerBackdrop } from './CareerBackdrop'
 import { HistoryAssetTooltip } from './HistoryAssetTooltip'
@@ -66,6 +66,7 @@ export interface RecommendationContext {
 }
 
 export interface BuildRecommendation {
+  itemGroups?: Array<{ id: string; label: string; baselineWinRate: number | null; coreItems: OpggItemBuild[]; lastItems: OpggItemBuild[]; boots: OpggItemBuild[] }>
   mode: OpggMode
   modeLabel: string
   version: string
@@ -123,6 +124,9 @@ export function OpggBuildRecommendationPanel({
   koreanMatchups,
 }: OpggBuildRecommendationPanelProps) {
   const { t } = useI18n()
+  const [itemGroupId, setItemGroupId] = useState('0')
+  const itemGroups = recommendation?.itemGroups ?? []
+  const itemGroup = itemGroups.find((group) => group.id === itemGroupId) ?? itemGroups[0]
   const champion = getChampionById(context.championId)
   const championName = champion ? `${champion.title} ${champion.name}` : t('opgg.unrecognizedChampion')
   const queueText = recommendation?.modeLabel || (context.queueId > 0 ? getQueueName(context.queueId) : t('opgg.unknownQueue'))
@@ -157,7 +161,7 @@ export function OpggBuildRecommendationPanel({
           {showPositionFilter && (
             <PositionFilterSelect value={context.position} onChange={onPositionChange} allowUnselected={!!koreanMatchups} />
           )}
-          <TierFilterSelect value={selectedTier} onChange={onTierChange} />
+          {!mayhem && <TierFilterSelect value={selectedTier} onChange={onTierChange} />}
         </div>
         <button type="button" className="sobp-close" onClick={onClose} aria-label={t('opgg.close')}>
           ×
@@ -182,13 +186,14 @@ export function OpggBuildRecommendationPanel({
               {!mayhem && <RuneSection title={t('opgg.section.runes')} runes={recommendation?.runePages} championName={championName} modeLabel={recommendation?.modeLabel || queueText} />}
               <SpellSection title={t('opgg.section.spells')} builds={recommendation?.summonerSpells} limit={MAX_RECOMMENDATION_ROWS} />
             </div>
+              {itemGroup && <div className="sobp-build-filter"><span>出装流派</span><SonaSelect value={itemGroup.id} onChange={setItemGroupId} options={itemGroups.map((group) => ({ value: group.id, label: group.label }))} /><small>流派胜率 {formatPercent(itemGroup.baselineWinRate ?? undefined)} · ARAM.GG 海斗</small></div>}
             {showEarlyItems && <>
               {!mayhem && <CompactEquipmentSection title="出门装推荐" builds={recommendation?.starterItems} />}
-              <CompactEquipmentSection title="鞋子推荐" builds={recommendation?.boots} />
+              <CompactEquipmentSection title="鞋子推荐" builds={itemGroup?.boots ?? recommendation?.boots} />
             </>}
-              <div className="sobp-core-builds" data-testid="three-item-builds"><ItemSection title="核心出装" builds={recommendation?.coreItems?.filter((build) => build.ids.length === 3 && build.ids.every((id) => Number.isInteger(id) && id > 0) && new Set(build.ids).size === 3)} itemLimit={3} /></div>
+              <div className="sobp-core-builds" data-testid="three-item-builds"><ItemSection title="核心出装" builds={(itemGroup?.coreItems ?? recommendation?.coreItems)?.filter((build) => build.ids.length === 3 && build.ids.every((id) => Number.isInteger(id) && id > 0) && new Set(build.ids).size === 3)} itemLimit={3} /></div>
             <div className="sobp-trend-wrap">
-              <LastItemTrendSection title="后续成装推荐" builds={recommendation?.lastItems} />
+              <LastItemTrendSection title="后续成装推荐" builds={itemGroup?.lastItems ?? recommendation?.lastItems} />
             </div>
             {!mayhem && <MatchupSection title={t('opgg.section.matchups')} matchups={recommendation?.matchups} />}
             {showAugments && !mayhem && <AugmentSection title={t('opgg.section.augments')} groups={recommendation?.augments} />}
@@ -703,13 +708,14 @@ function RankBadge({ rank }: { rank: number }) {
   return <div className={`sobp-rank${rank === 1 ? ' sobp-rank--first' : ''}`}>#{rank}</div>
 }
 
-function getBuildWinRate(build: {win?: number; play?: number}): number | undefined {
+function getBuildWinRate(build: {win?: number; play?: number; winRate?: number | null}): number | undefined {
+  if (build.winRate !== undefined) return typeof build.winRate === 'number' && Number.isFinite(build.winRate) && build.winRate >= 0 && build.winRate <= 1 ? build.winRate : undefined
   const {win,play} = build
   return typeof win === 'number' && Number.isFinite(win) && typeof play === 'number' && Number.isFinite(play)
     && play > 0 && win >= 0 && win <= play ? win / play : undefined
 }
 
-function RecommendationStats({ build, maxRate }: { build: {pick_rate: number; win?: number; play?: number; baselineWinRate?: number | null}; maxRate: number }) {
+function RecommendationStats({ build, maxRate }: { build: {pick_rate: number; win?: number; play?: number; winRate?: number | null; baselineWinRate?: number | null}; maxRate: number }) {
   return <RecommendationRates pickRate={build.pick_rate} winRate={getBuildWinRate(build)} maxRate={maxRate} baselineWinRate={build.baselineWinRate} />
 }
 
@@ -808,10 +814,12 @@ function IconTooltip({
   const anchorRef = useRef<HTMLSpanElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
   const closeTimerRef = useRef<number | null>(null)
+  const activatedRef = useRef(false)
   const [mounted, setMounted] = useState(false)
   const [visible, setVisible] = useState(false)
   const [position, setPosition] = useState<TooltipPosition>({ left: 0, top: 0, arrowLeft: 0, placement: 'top', ready: false })
   const parsedDescription = parseTooltipDescription(description)
+  useEffect(() => () => { if (closeTimerRef.current != null) window.clearTimeout(closeTimerRef.current) }, [])
 
   useLayoutEffect(() => {
     if (!mounted || !anchorRef.current || !tooltipRef.current) return
@@ -843,6 +851,7 @@ function IconTooltip({
   }, [mounted, title, description, subtitle, price])
 
   const showTooltip = () => {
+    if (activatedRef.current) return
     if (closeTimerRef.current != null) {
       window.clearTimeout(closeTimerRef.current)
       closeTimerRef.current = null
@@ -851,19 +860,32 @@ function IconTooltip({
   }
 
   const hideTooltip = () => {
+    if (closeTimerRef.current != null) window.clearTimeout(closeTimerRef.current)
     setVisible(false)
     closeTimerRef.current = window.setTimeout(() => {
       setMounted(false)
       closeTimerRef.current = null
     }, 140)
   }
+  const dismissTooltip = () => {
+    activatedRef.current = true
+    if (closeTimerRef.current != null) window.clearTimeout(closeTimerRef.current)
+    closeTimerRef.current = null; setVisible(false); setMounted(false)
+  }
 
   return (
     <span
       ref={anchorRef}
       className="sobp-icon-tooltip-wrap"
+      tabIndex={0}
+      aria-label={title}
       onMouseEnter={showTooltip}
-      onMouseLeave={hideTooltip}
+      onMouseLeave={() => { activatedRef.current = false; hideTooltip() }}
+      onFocus={showTooltip}
+      onBlur={() => { activatedRef.current = false; hideTooltip() }}
+      onPointerDownCapture={dismissTooltip}
+      onClickCapture={dismissTooltip}
+      onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ' || event.key === 'Escape') dismissTooltip() }}
     >
       {children}
       {mounted && createPortal(

@@ -176,7 +176,7 @@ export function RunesAndSpells({ player }: { player: SgpParticipantLol }) {
   const secondary = player.perks?.styles?.[1]?.style
   const spells = [player.spell1Id, player.spell2Id].filter((id) => id > 0)
   return <><div className="rh-runes-spells">{spells.map((id, index) => { const info = getSpellInfo(id); return <HistoryImage key={`spell-${index}`} src={info.iconPath} label={`${info.name || `技能 ${id}`}\n${info.description}`} /> })}
-    {(keystone || secondary) && <button type="button" className="rh-runes-detail-button" aria-label="查看本局符文详情" onClick={() => setShowDetails(true)}>
+    {Boolean((keystone ?? 0) > 0 || (secondary ?? 0) > 0) && <button type="button" className="rh-runes-detail-button" aria-label="查看本局符文详情" onClick={() => setShowDetails(true)}>
       {keystone ? <HistoryImage src={getPerkInfo(keystone).iconPath} label={`${getPerkInfo(keystone).name}\n${getPerkInfo(keystone).description}`} /> : null}
       {secondary ? <HistoryImage src={getPerkStyleIcon(secondary)} label={getPerkStyleName(secondary)} /> : null}
     </button>}

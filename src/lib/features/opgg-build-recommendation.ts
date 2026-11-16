@@ -13,11 +13,11 @@ import { createElement } from 'react'
 import { flushSync } from 'react-dom'
 import { createRoot, type Root } from 'react-dom/client'
 import { Modal } from '@/components/ui/Modal'
-import { getAllChampions, getAugmentInfo, getChampionById, getItemPrice, getQueue, getQueueName } from '@/lib/assets'
+import { getAllChampions, getAugmentInfo, getChampionById, getItemInfo, getItemPrice, getQueue, getQueueName } from '@/lib/assets'
 import { OpggBuildRecommendationPanel, type BuildRecommendation, type RecommendationContext } from '@/components/ui/OpggBuildRecommendationPanel'
 import { lcu, LcuEventUri, type ChampSelectSession, type ItemSet, type ItemSetBlock, type LCUEventMessage, type RunePage, type RunePagePayload } from '@/lib/lcu'
 import { store } from '@/lib/store'
-import { aramggApi, type AramggChampionRecommendation, type AramggChampionStatEntry, type AramggCoreItemBuild, type AramggMayhemAugments } from '@/lib/aramgg-api'
+import { aramggApi, type AramggChampionRecommendation, type AramggChampionStatEntry, type AramggMayhemAugments } from '@/lib/aramgg-api'
 import {
   opggApi,
   mapAssignedPosition,
@@ -305,7 +305,7 @@ function resolveOpggMode(context: RecommendationContext): OpggMode {
 }
 
 function isKiwiMode(context: RecommendationContext): boolean {
-  return context.gameMode.toLowerCase() === 'kiwi'
+  return context.queueId === 2400 || context.gameMode.toLowerCase() === 'kiwi'
 }
 
 /** 匹配/排位（opgg ranked）且识别不到分路时，需要展开五路分别写入 */
@@ -693,6 +693,7 @@ function sortItemIdsByPriceDesc(itemIds: number[]): number[] {
 }
 
 function getItemBuildWinRate(build: OpggItemBuild): number {
+  if (typeof build.winRate === 'number' && Number.isFinite(build.winRate) && build.winRate >= 0 && build.winRate <= 1) return build.winRate
   return build.play > 0 ? build.win / build.play : 0
 }
 
@@ -1447,7 +1448,7 @@ async function loadRecommendation(context: RecommendationContext, signal?: Abort
     : 'none'
 
   if (isKiwiMode(context)) {
-    return loadAramggKiwiRecommendation(context, mode, position, tier, signal)
+    return loadAramggKiwiRecommendation(context, mode, position, signal)
   }
 
   const mainChampion = await getChampionWithVersionFallback({
@@ -1488,63 +1489,32 @@ async function loadAramggKiwiRecommendation(
   context: RecommendationContext,
   mode: OpggMode,
   position: OpggPosition,
-  tier: OpggTier,
   signal?: AbortSignal,
 ): Promise<BuildRecommendation | null> {
-  const [opggChampion, aramgg, mayhemAugments] = await Promise.all([
-    getChampionWithVersionFallback({
-      signal,
-      id: context.championId,
-      mode,
-      tier,
-      position,
-    }).catch((err) => {
-      logger.warn('[OPGG] KIWI 基础配装请求失败，将只使用 ARAM.GG 数据:', err)
-      return null
-    }),
-    aramggApi.getChampionRecommendation(context.championId, { signal, includeStartingItems: false }),
-    aramggApi.getMayhemAugmentsZhCn({ signal }).catch((err) => {
-      logger.warn('[ARAMGG] 海克斯稀有度请求失败，将尝试使用客户端资源兜底:', err)
-      return {} as AramggMayhemAugments
-    }),
+  const [aramgg, mayhemAugments] = await Promise.all([
+    aramggApi.getChampionRecommendation(context.championId, { signal, includeStartingItems: false, includeBuilds: true }),
+    aramggApi.getMayhemAugmentsZhCn({ signal }).catch(() => ({} as AramggMayhemAugments)),
   ])
-
-  const normal = opggChampion && isNormalChampion(opggChampion) ? opggChampion : null
-  const supplementalBaseline = normal?.data.summary.average_stats.win_rate ?? null
-  const withSupplementalBaseline = (build: OpggItemBuild) => ({ ...build, baselineWinRate: supplementalBaseline })
-  const data = opggChampion?.data
-  const aramggCoreItems = mapAramggCoreItemBuilds(aramgg.coreItemBuilds)
-  const aramggLastItems = mapAramggItems(aramgg.items)
-
-  // ARAM.GG 偶尔会在页面结构升级后暂时解析不到装备数据。海克斯模式仍然
-  // 需要优先使用它的专属数据，但每个空分段都必须退回 OP.GG，避免生成的
-  // 本地配装只剩鞋子。补充分段使用同来源、同模式的英雄胜率基准。
-  if (aramggCoreItems.length === 0 || aramggLastItems.length === 0) {
-    logger.warn(
-      '[BuildRecommendation] ARAM.GG 装备分段为空，回退 OP.GG：champion=%d core=%d last=%d',
-      context.championId,
-      aramggCoreItems.length,
-      aramggLastItems.length,
-    )
-  }
-
+  const directBuild = (build: { ids: number[]; winRate: number | null; pickRate: number | null }, baselineWinRate: number | null): OpggItemBuild => ({
+    ids: build.ids, win: NaN, play: NaN, winRate: build.winRate, pick_rate: build.pickRate ?? NaN, baselineWinRate,
+  })
+  const baseline = toOptionalNumber(aramgg.championStats?.win_rate)
+  const itemGroups = (aramgg.itemGroups ?? []).map((group) => {
+    const coreItems = group.coreItems.map((build) => directBuild(build, group.winRate))
+    const lastItems = group.items.map((build) => directBuild(build, null))
+    const publishedIds = new Set([...coreItems, ...lastItems].flatMap((build) => build.ids))
+    const boots = [...publishedIds].filter((id) => /靴|鞋|足具|boots|shoes|treads|greaves/i.test(getItemInfo(id).name)).map((id) => directBuild({ ids:[id],winRate:null,pickRate:null },null))
+    const labels: Record<string,string> = { AD:'物理',AP:'法术',Bruiser:'战士',Lethality:'穿甲',Tank:'坦克',Support:'辅助',OnHit:'特效' }
+    return { id:group.id,label:group.label.split(' · ').map((part)=>labels[part]??part).join(' · '),baselineWinRate:group.winRate,coreItems,lastItems,boots }
+  })
+  const first = itemGroups[0]
   return {
-    mode,
-    modeLabel: getModeLabel(mode, context),
-    version: aramgg.championStats?.version || opggChampion?.meta.version || context.gameVersion || '',
-    position,
-    baselineWinRate: toOptionalNumber(aramgg.championStats?.win_rate),
-    summary: getAramggSummaryLines(aramgg),
-    summonerSpells: (normal?.data.summoner_spells ?? []).map(withSupplementalBaseline),
-    starterItems: [],
-    boots: (data?.boots ?? []).map(withSupplementalBaseline),
-    coreItems: aramggCoreItems.length > 0 ? aramggCoreItems : (data?.core_items ?? []).map(withSupplementalBaseline),
-    prismItems: [],
-    lastItems: aramggLastItems.length > 0 ? aramggLastItems : (data?.last_items ?? []).map(withSupplementalBaseline),
-    runePages: [],
-    matchups: [],
-    augments: mapAramggAugments(aramgg.augments, mayhemAugments),
-    meta: undefined,
+    mode, modeLabel:getModeLabel(mode,context),version:aramgg.championStats?.version||context.gameVersion||'',position,
+    baselineWinRate:baseline,summary:getAramggSummaryLines(aramgg),
+    summonerSpells:(aramgg.summonerSpells??[]).map((build)=>directBuild(build,baseline)),starterItems:[],
+    boots:first?.boots??[],coreItems:first?.coreItems??[],lastItems:first?.lastItems??[],itemGroups,
+    prismItems:[],runePages:[],matchups:[],augments:mapAramggAugments(aramgg.augments,mayhemAugments),
+    warning:itemGroups.length?'':'海斗装备数据暂不可用。',
   }
 }
 
@@ -1570,36 +1540,6 @@ function toOptionalNumber(value: unknown): number | null {
 function toNumber(value: unknown): number {
   const numberValue = typeof value === 'number' ? value : Number(value)
   return Number.isFinite(numberValue) ? numberValue : 0
-}
-
-function mapAramggCoreItemBuilds(builds: AramggCoreItemBuild[]): OpggItemBuild[] {
-  return builds.map((build) => {
-    const play = toNumber(build.games)
-    const win = toNumber(build.wins)
-    return {
-      ids: build.itemIds.split(',').map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0),
-      win,
-      play,
-      pick_rate: toNumber(build.pick_rate),
-    }
-  }).filter((build) => build.ids.length > 0)
-}
-
-function mapAramggItems(items: Record<string, AramggChampionStatEntry>): OpggItemBuild[] {
-  return Object.entries(items)
-    .map(([id, item]) => ({
-      ids: [Number(id)].filter((value) => Number.isFinite(value) && value > 0),
-      win: toNumber(item.num_win_games),
-      play: toNumber(item.num_games),
-      pick_rate: toNumber(item.pick_rate),
-      tier: Number(item.tier),
-    }))
-    .filter((item) => item.ids.length > 0)
-    .sort((a, b) => {
-      const tierDiff = (Number.isFinite(a.tier) ? a.tier : 99) - (Number.isFinite(b.tier) ? b.tier : 99)
-      return tierDiff || b.pick_rate - a.pick_rate
-    })
-    .map(({ tier: _tier, ...item }) => item)
 }
 
 function getAugmentRaritySortValue(rarity: number): number {

@@ -1,4 +1,4 @@
-import { cloneElement, isValidElement, useId, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from 'react'
+import { cloneElement, isValidElement, useEffect, useId, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 export interface TooltipStat { label: string; value: string }
 
@@ -19,16 +19,34 @@ export function HistoryAssetTooltip({ className, title, subtitle, description, i
   const anchorRef = useRef<HTMLElement>(null)
   const [hovered, setHovered] = useState(false)
   const [focused, setFocused] = useState(false)
-  const visible = hovered || focused
+  const [dismissed, setDismissed] = useState(false)
+  const visible = (hovered || focused) && !dismissed
   const id = useId()
 
   const events = {
-    onMouseEnter: () => { setHovered(true); onShow?.() },
-    onMouseLeave: () => setHovered(false),
-    onFocus: () => { setFocused(true); onShow?.() },
+    onMouseEnter: () => { setHovered(true); setDismissed(false); onShow?.() },
+    onMouseLeave: () => { setHovered(false); setDismissed(true) },
+    onFocus: () => { setFocused(true); setDismissed(false); onShow?.() },
     onBlur: () => setFocused(false),
     'aria-describedby': visible ? id : undefined,
   }
+  useEffect(() => {
+    if (!visible) return
+    const dismiss = () => setDismissed(true)
+    const activate = (event: Event) => { if (event.target instanceof Node && anchorRef.current?.contains(event.target)) dismiss() }
+    const key = (event: KeyboardEvent) => { if (event.key === 'Escape') dismiss(); else if (event.key === 'Enter' || event.key === ' ') activate(event) }
+    const hidePage = () => { if (document.hidden) dismiss() }
+    document.addEventListener('pointerdown', activate, true)
+    document.addEventListener('click', activate, true)
+    document.addEventListener('keydown', key, true)
+    document.addEventListener('visibilitychange', hidePage)
+    window.addEventListener('blur', dismiss)
+    return () => {
+      document.removeEventListener('pointerdown', activate, true); document.removeEventListener('click', activate, true)
+      document.removeEventListener('keydown', key, true); document.removeEventListener('visibilitychange', hidePage)
+      window.removeEventListener('blur', dismiss)
+    }
+  }, [visible])
   const anchor = asChild && isValidElement(children)
     ? cloneElement(children as ReactElement<Record<string, unknown>>, { ...events, ref: anchorRef })
     : <span ref={anchorRef} className={className} tabIndex={focusable ? 0 : undefined} aria-label={title} {...events}>{children}</span>
