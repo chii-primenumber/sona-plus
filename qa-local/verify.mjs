@@ -5,6 +5,7 @@ import path from 'node:path'
 import fs from 'node:fs/promises'
 import { execFileSync } from 'node:child_process'
 import { verifyUiOptimizations } from './verify-ui-optimizations.mjs'
+import { verifyAugmentSwitch } from './verify-augment-switch.mjs'
 import { verifyMayhemDeltas } from './verify-mayhem-deltas.mjs'
 import { verifyRecommendationLifecycle } from './verify-recommendation-lifecycle.mjs'
 import { installPerformanceProbe, measurePerformance } from './measure-performance.mjs'
@@ -1277,7 +1278,7 @@ try {
     window.qaMayhemRender()
   })
   await mayhemPanel.evaluate((node)=>{node.style.cssText='position:fixed;inset:12px;z-index:2147483647;background:#111;height:calc(100vh - 24px)'})
-  await page.waitForFunction(()=>document.querySelectorAll('#qa-mayhem-recommendations .sobp-augment').length===8)
+  await page.waitForFunction(()=>document.querySelectorAll('#qa-mayhem-recommendations .sobp-augment').length===12)
   const mayhemTitles=await mayhemPanel.locator('.sobp-section-title').allTextContents()
   assert.match(mayhemTitles[0],/海克斯/)
   const allRates=(await mayhemPanel.locator('.sobp-augment .sobp-win-rate strong').allTextContents()).map(parseFloat)
@@ -1287,13 +1288,14 @@ try {
   assert.ok(filterPosition.filter>=filterPosition.head)
   for (const [label,rarity] of [['棱彩',8],['黄金',4],['白银',1]]) {
     await mayhemPanel.getByRole('button',{name:label,exact:true}).evaluate((node)=>node.click())
-    await page.waitForFunction((r)=>[...document.querySelectorAll('#qa-mayhem-recommendations .sobp-augment')].length===8&&[...document.querySelectorAll('#qa-mayhem-recommendations .sobp-augment')].every((node)=>Number(node.dataset.rarity)===r),rarity)
+    await page.waitForFunction((r)=>[...document.querySelectorAll('#qa-mayhem-recommendations .sobp-augment')].length===12&&[...document.querySelectorAll('#qa-mayhem-recommendations .sobp-augment')].every((node)=>Number(node.dataset.rarity)===r),rarity)
+    assert.equal(await mayhemPanel.getByRole('button',{name:'海克斯推荐：展开全部',exact:true}).count(),0)
   }
   await mayhemPanel.getByRole('button',{name:'全部',exact:true}).evaluate((node)=>node.click())
   await mayhemPanel.getByRole('button',{name:'海克斯推荐：展开全部',exact:true}).click()
   assert.equal(await mayhemPanel.locator('.sobp-augment').count(),36)
   await mayhemPanel.getByRole('button',{name:'海克斯推荐：部分显示',exact:true}).click()
-  assert.equal(await mayhemPanel.locator('.sobp-augment').count(),8)
+  assert.equal(await mayhemPanel.locator('.sobp-augment').count(),12)
   await mayhemPanel.getByRole('button',{name:'海克斯推荐：收起',exact:true}).click()
   await page.waitForFunction(()=>document.querySelector('#qa-mayhem-recommendations .sobp-augment-wrap .sobp-section-reveal').getBoundingClientRect().height<1)
   await mayhemPanel.getByRole('button',{name:'海克斯推荐：展开',exact:true}).click()
@@ -1317,6 +1319,7 @@ try {
   assert.ok(labelGap>=0 && labelGap<=8,`pick label gap ${labelGap}`)
   await mayhemPanel.evaluate((node)=>{node.style.cssText='position:fixed;inset:12px;z-index:2147483647;background:#111;height:calc(100vh - 24px)'})
   await mayhemPanel.screenshot({path:path.join(out,'海斗紧凑海克斯筛选_模拟数据.png')})
+  await verifyAugmentSwitch(page,mayhemPanel,out)
   await page.evaluate(()=>{window.qaMayhemRoot.unmount();document.getElementById('qa-mayhem-recommendations').remove()})
   await verifyMayhemDeltas(page)
   await verifyRecommendationLifecycle(page)

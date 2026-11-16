@@ -384,17 +384,17 @@ function getSummaryKind(value: string): SummaryKind {
   return 'default'
 }
 
-function Section({ title, children, empty = false, emptyText, count, toolbar }: {
-  title: string; children: ReactNode | ((limit: number) => ReactNode); empty?: boolean; emptyText?: string; count?: number; toolbar?: ReactNode
+function Section({ title, children, empty = false, emptyText, count, toolbar, partialLimit = 8 }: {
+  title: string; children: ReactNode | ((limit: number) => ReactNode); empty?: boolean; emptyText?: string; count?: number; toolbar?: ReactNode; partialLimit?: number
 }) {
   const { t } = useI18n()
   const [mode,setMode]=useState<'hidden'|'partial'|'all'>('partial')
   const content=useRef<HTMLDivElement>(null)
   const [height,setHeight]=useState<number>()
   const collapsible=count != null && count>0
-  const large=(count ?? 0)>8
+  const large=(count ?? 0)>partialLimit
   const closed=collapsible && mode==='hidden'
-  const limit=large && mode!=='all' ? 8 : Infinity
+  const limit=large && mode!=='all' ? partialLimit : Infinity
   // Height observations must not rebuild every item, tooltip and image in this section.
   const body=useMemo(()=><div className="sobp-section-card">{toolbar}{empty?<div className="sobp-empty">{emptyText??t('common.noData')}</div>:typeof children==='function'?children(limit):children}</div>,[toolbar,empty,emptyText,t,children,limit])
   useLayoutEffect(()=>{
@@ -659,17 +659,27 @@ function RuneSection({ title, runes, championName, modeLabel }: { title: string;
   )
 }
 
+const AUGMENT_TYPES = [[0,'全部'],[8,'棱彩'],[4,'黄金'],[1,'白银']] as const
+
 function AugmentSection({ title, groups }: { title: string; groups?: BuildRecommendation['augments'] }) {
   const [rarity, setRarity] = useState(0)
   const sorted=useMemo(()=>[...new Map((groups ?? []).flatMap((group) => group.items.map((item) => ({...item, rarity: group.rarity, rarityLabel: group.label ?? getAugmentRarityLabel(group.rarity)}))).map((item) => [item.id,item])).values()]
     .sort((a,b) => (Number.isFinite(b.winRate) ? b.winRate! : -1) - (Number.isFinite(a.winRate) ? a.winRate! : -1) || b.pickRate-a.pickRate || a.id-b.id),[groups])
   const entries=useMemo(()=>rarity?sorted.filter((item)=>item.rarity===rarity):sorted,[sorted,rarity])
-  const toolbar=<div className="sobp-augment-filters" role="group" aria-label="海克斯类型">
-    {[[0,'全部'],[8,'棱彩'],[4,'黄金'],[1,'白银']].map(([value,label])=><button type="button" key={value} aria-pressed={rarity===value} onClick={()=>setRarity(Number(value))}>{label}</button>)}
+  const toolbar=<div className="sobp-augment-filters">
+    <div className="sobp-augment-switch" role="group" aria-label="海克斯类型">
+      <span className="sobp-augment-switch-thumb" aria-hidden="true" style={{transform:`translateX(${AUGMENT_TYPES.findIndex(([value])=>value===rarity)*100}%)`}} />
+      {AUGMENT_TYPES.map(([value,label],index)=><button type="button" key={value} aria-pressed={rarity===value} onClick={()=>setRarity(value)} onKeyDown={(event)=>{
+        const next=event.key==='ArrowRight'?(index+1)%4:event.key==='ArrowLeft'?(index+3)%4:event.key==='Home'?0:event.key==='End'?3:-1
+        if(next<0)return
+        event.preventDefault();setRarity(AUGMENT_TYPES[next][0])
+        event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('button')[next]?.focus()
+      }}>{label}</button>)}
+    </div>
     <small>{entries.length} 个 · 胜率排序</small>
   </div>
   return <div className="sobp-augment-wrap sobp-augments-compact">
-    <Section title={title} empty={!entries.length} count={entries.length} toolbar={toolbar}>
+    <Section title={title} empty={!entries.length} count={entries.length} toolbar={toolbar} partialLimit={12}>
       {(limit)=><div className="sobp-augment-grid">
         {entries.slice(0,limit).map((augment,index) => {
           const info=getAugmentInfo(augment.id)
