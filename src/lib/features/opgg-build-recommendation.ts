@@ -50,6 +50,7 @@ let workspaceRequest=0
 let workspaceParty:ReadonlySet<string>=new Set()
 let workspaceBuildLoading=false,workspaceBuildReady=false
 let workspaceBuildError=''
+let workspaceContext:RecommendationContext|null=null
 
 const PANEL_ID = 'sona-opgg-build-panel'
 const IN_GAME_BUILD_BUTTON_ATTR = 'data-sona-opgg-ingame-build'
@@ -1389,7 +1390,7 @@ async function refreshContext(session?: ChampSelectSession) {
     currentChampionLocked = isLocalChampionLocked(currentSession)
     if (championId !== currentContext.championId) closePanel()
     currentContext = { ...currentContext, championId, queueId, position: mapAssignedPosition(localPlayer?.assignedPosition), gameMode: getQueue(queueId)?.gameMode || '' }
-    if (store.get('opggBuildRecommendation')) { mount(); tryInjectPreselectBuildButton() }
+    if (store.get('opggBuildRecommendation')) { mount(); cleanupPreselectBuildEntry() }
     const gameMode = await resolveGameMode(queueId)
     const assignedPosition = mapAssignedPosition(localPlayer?.assignedPosition)
     const position = await resolveInitialRecommendationPosition({
@@ -1434,6 +1435,10 @@ async function refreshContext(session?: ChampSelectSession) {
         unmountPanel()
       }
       const cacheEntry = ensureRecommendationPrefetch(currentContext)
+      if(workspaceMode==='bp' && inGameModalRoot && document.querySelector('.sona-game-tools') && (workspaceContext?.championId!==currentContext.championId||workspaceContext?.queueId!==currentContext.queueId||workspaceContext?.gameMode!==currentContext.gameMode)) {
+        workspaceBuildLoading=false;workspaceBuildReady=true;workspaceBuildError=''
+        renderInGameBuildRecommendationModal({...currentContext},cacheEntry,++inGameModalRenderToken)
+      }
       if (cacheEntry && currentChampionLocked) {
         syncRecommendedItemSetWhenReady(cacheEntry)
       }
@@ -1445,6 +1450,10 @@ async function refreshContext(session?: ChampSelectSession) {
         }
       }
     } else {
+      if(workspaceMode==='bp'&&inGameModalRoot&&document.querySelector('.sona-game-tools')){
+        workspaceBuildLoading=false;workspaceBuildReady=false;workspaceBuildError='请先选择英雄'
+        renderInGameBuildRecommendationModal({...currentContext},null,++inGameModalRenderToken)
+      }
       unmount(false)
     }
   } catch (err) {
@@ -1664,6 +1673,7 @@ function renderInGameBuildRecommendationModal(
   token: number,
 ) {
   if (token !== inGameModalRenderToken) return
+  workspaceContext={...context}
   window.clearTimeout(inGameModalCloseTimer); inGameModalCloseTimer = 0
   if (!inGameModalContainer) {
     inGameModalContainer = document.createElement('div')
@@ -1777,6 +1787,16 @@ async function resolveInGameRecommendationContext(): Promise<RecommendationConte
   }
 }
 
+async function resolveBpRecommendationContext():Promise<RecommendationContext> {
+  const session=await lcu.getChampSelectSession()
+  const championId=getLocalChampionId(session)
+  if(championId<=0)throw new Error('请先选择英雄')
+  const queueId=session.queueId??0
+  const gameMode=await resolveGameMode(queueId)
+  const position=await resolveInitialRecommendationPosition({championId,queueId,gameMode,assignedPosition:mapAssignedPosition(getLocalPlayer(session)?.assignedPosition)})
+  return {championId,queueId,gameMode,position,gameVersion:currentContext.gameVersion||await lcu.getGameVersion().catch(()=>'')}
+}
+
 async function loadWorkspaceBuild() {
   if(workspaceBuildReady||!inGameModalRoot) return
   const token=++inGameModalRenderToken
@@ -1784,7 +1804,7 @@ async function loadWorkspaceBuild() {
   renderInGameBuildRecommendationModal(currentContext,null,token)
   try {
     if(workspaceMode==='lobby')throw new Error('自定义房间尚未选定英雄，进入英雄选择后可查看配装推荐。')
-    const context=workspaceMode==='bp'&&currentContext.championId>0 ? {...currentContext} : await deadline(()=>resolveInGameRecommendationContext(),undefined,10000)
+    const context=await deadline(()=>workspaceMode==='bp'?resolveBpRecommendationContext():resolveInGameRecommendationContext(),undefined,10000)
     if(token!==inGameModalRenderToken||!inGameModalRoot)return
     currentContext={...context};workspaceBuildLoading=false;workspaceBuildReady=true
     renderInGameBuildRecommendationModal(context,ensureRecommendationPrefetch(context),token)
@@ -2007,11 +2027,8 @@ function tryHijackAbilityPreviewPanel(): boolean {
       event.stopPropagation()
       event.stopImmediatePropagation()
       event.preventDefault()
-      if (document.getElementById(PANEL_ID)) {
-        closePanel()
-        return
-      }
-      openRecommendationPanel(target)
+      closePanel()
+      void showGameToolsWorkspace('build','bp')
     }
 
     target.setAttribute(HIJACK_ATTR, 'true')
@@ -2077,48 +2094,13 @@ function unregisterInGameBuildButton() {
   cleanupInGameBuildRecommendationModal()
 }
 
-function tryInjectPreselectBuildButton(): boolean {
-  const lock = document.querySelector<HTMLElement>('.lock-in.visible')
-  const host = lock && lock.getClientRects().length && getComputedStyle(lock).visibility !== 'hidden'
-    ? lock : document.querySelector<HTMLElement>('.bottom-right-buttons')
-  const previous = document.querySelector<HTMLElement>(`[${PRESELECT_BUILD_BUTTON_ATTR}]`)
-  if (!host || currentChampionLocked || currentContext.championId <= 0) {
-    previous?.remove()
-    return true
-  }
-  if (previous?.parentElement === host) return true
-  previous?.remove()
-  const button = document.createElement('lol-uikit-flat-button')
-  button.setAttribute(PRESELECT_BUILD_BUTTON_ATTR, 'true')
-  button.setAttribute('role', 'button')
-  button.setAttribute('tabindex', '0')
-  styleClientEntry(button, '配装推荐', 'build')
-  const open = async () => {
-    try {
-      if (currentContext.championId > 0) await openRecommendationPanel(button, { ...currentContext })
-    } catch {
-      if (typeof Toast !== 'undefined') Toast.error('配装推荐打开失败')
-    }
-  }
-  button.addEventListener('click', (event) => {
-    event.preventDefault()
-    event.stopPropagation()
-    void open()
-  })
-  button.addEventListener('keydown', (event) => {
-    if (event.key !== 'Enter' && event.key !== ' ') return
-    event.preventDefault()
-    event.stopPropagation()
-    void open()
-  })
-  host.append(button)
-  return true
+function cleanupPreselectBuildEntry() {
+  document.querySelectorAll(`[${PRESELECT_BUILD_BUTTON_ATTR}]`).forEach(element=>element.remove())
 }
 
 function mount() {
   if (!injectRegistered) {
     injector.register(tryHijackAbilityPreviewPanel, { selector: TARGET_SELECTOR })
-    injector.register(tryInjectPreselectBuildButton, { selector: '.lock-in, .bottom-right-buttons' })
     injectRegistered = true
     logger.info('[OPGG] 已检测到本地英雄，开始接管技能预览入口')
   }
@@ -2127,7 +2109,6 @@ function mount() {
 function unmountPanel() {
   if (injectRegistered) {
     injector.unregister(tryHijackAbilityPreviewPanel)
-    injector.unregister(tryInjectPreselectBuildButton)
     injectRegistered = false
   }
 

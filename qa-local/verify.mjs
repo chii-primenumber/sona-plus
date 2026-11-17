@@ -1,3 +1,4 @@
+import { verifyBpEntryPerformance } from './verify-bp-entry-performance.mjs'
 import { verifyRoomWorkspace } from './verify-room-workspace.mjs'
 import { verifyNextVersion } from './verify-next-version.mjs'
 import { verifyScrollVisibility } from './verify-scroll-visibility.mjs'
@@ -125,7 +126,7 @@ try {
   const context = await browser.newContext({ viewport:{width:1450,height:940}, reducedMotion:'reduce' })
   await context.grantPermissions(['clipboard-read','clipboard-write'])
   const page = await context.newPage()
-  if (process.env.SONA_PERF_OUTPUT) await page.addInitScript(installPerformanceProbe)
+  if (process.env.SONA_PERF_OUTPUT || process.env.SONA_BP_PERF) await page.addInitScript(installPerformanceProbe)
   page.on('pageerror',(error)=>errors.push(error.message))
   await page.route('**/*', async (route) => {
     const url = new URL(route.request().url()), p = url.pathname, method = route.request().method()
@@ -275,7 +276,10 @@ try {
   await verifyScrollVisibility(page)
   await verifyNextVersion(page,out,games)
   await verifyRoomWorkspace(page,out,games)
-  if (process.env.SONA_BRAND_ONLY) {
+  if (process.env.SONA_BP_PERF) {
+    await verifyBpEntryPerformance(page,out,bp)
+    assert.equal(errors.length,0,errors.join('\n'))
+  } else if (process.env.SONA_BRAND_ONLY) {
     assert.equal(errors.length,0,errors.join('\n'))
   } else if (process.env.SONA_UI44_ONLY) {
     await verifyRichTooltips(page,out)
@@ -1061,35 +1065,14 @@ try {
     store.set('opggBuildRecommendation',true)
     window.qaEmit('/lol-champ-select/v1/session',session)
   }, bp)
-  const previewBuild = page.locator('[data-sona-opgg-preselect-build]')
-  await previewBuild.waitFor()
-  // Ranked intent phase: lock area hidden, only session data changes.
-  await page.evaluate((base) => {
-    document.querySelector('.lock-in').classList.remove('visible')
-    const session=structuredClone(base); session.queueId=420;session.actions=[]
-    session.myTeam[0].championId=0;session.myTeam[0].championPickIntent=157
-    window.qaEmit('/lol-champ-select/v1/session',session)
-  },bp)
-  await page.waitForFunction(()=>document.querySelector('.bottom-right-buttons > [data-sona-opgg-preselect-build]'))
-  await page.evaluate((base)=>{
-    const session=structuredClone(base);session.queueId=420;session.actions=[]
-    session.myTeam[0].championId=157;session.myTeam[0].championPickIntent=157
-    window.qaEmit('/lol-champ-select/v1/session',session)
-  },bp)
-  await previewBuild.waitFor()
-  await previewBuild.click()
-  await page.locator('#sona-opgg-build-panel .sobp-title-name').getByText(/亚索/).waitFor()
-  await page.locator('#sona-opgg-build-panel .sobp-close').click()
-  await page.evaluate((base)=>{
-    const session=structuredClone(base);session.actions=[];session.myTeam[0].championId=0;session.myTeam[0].championPickIntent=0
-    window.qaEmit('/lol-champ-select/v1/session',session)
-  },bp)
-  await previewBuild.waitFor({state:'detached'})
-  await page.evaluate((session)=>{document.querySelector('.lock-in').classList.add('visible');window.qaEmit('/lol-champ-select/v1/session',session)},bp)
-  await previewBuild.waitFor()
-  assert.ok((await previewBuild.boundingBox()).x < (await page.getByRole('button',{name:'锁定',exact:true}).boundingBox()).x)
-  await previewBuild.click()
-  const buildPanel = page.locator('#sona-opgg-build-panel')
+  const previewBuild=page.locator('[data-sona-opgg-preselect-build]')
+  assert.equal(await previewBuild.count(),0)
+  const nativeBuild=page.locator('.toggle-ability-previews-button')
+  await nativeBuild.getByText('配装推荐',{exact:true}).waitFor()
+  await nativeBuild.click()
+  const buildPanel=page.locator('.sona-game-tools')
+  await buildPanel.getByRole('group',{name:'对局工具切换',exact:true}).waitFor()
+  assert.equal(await page.locator('#sona-opgg-build-panel').count(),0)
   await buildPanel.locator('.sobp-title-name').getByText(/亚索/).waitFor()
   await buildPanel.locator('.sobp-recommendation-stats').first().waitFor()
   const coreRows=buildPanel.getByTestId('three-item-builds').locator('.sobp-row')
@@ -1126,7 +1109,7 @@ try {
   assert.equal(await buildPanel.locator('.sobp-stat-track').count(),await buildPanel.locator('.sobp-pick-rate').count())
   async function assertBuildLayout() {
     const result=await buildPanel.evaluate((root)=>{
-      const panel=root.querySelector('.sobp'), close=panel.querySelector('.sobp-close'), body=panel.querySelector('.sobp-body')
+      const panel=root, close=root.querySelector('[aria-label="关闭对局工具"]'), body=root.querySelector('.sobp-body')
       const box=panel.getBoundingClientRect(), button=close.getBoundingClientRect()
       return {inViewport:box.left>=19&&box.top>=19&&box.right<=innerWidth-19&&box.bottom<=innerHeight-19,
         closeInside:button.left>=box.left&&button.right<=box.right&&button.top>=box.top&&button.bottom<=box.bottom,
@@ -1149,20 +1132,20 @@ try {
   await page.waitForFunction(()=>document.querySelectorAll('.sobp-official-tooltip').length===0)
   await buildPanel.locator('.sobp').screenshot({path:path.join(out,'配装选取率与胜率_模拟数据.png')})
   await page.setViewportSize({width:1024,height:720})
-  await page.waitForFunction(()=>{const panel=document.querySelector('#sona-opgg-build-panel .sobp');return panel&&panel.getBoundingClientRect().right<=innerWidth-19})
+  await page.waitForFunction(()=>{const panel=document.querySelector('.sona-game-tools');return panel&&panel.getBoundingClientRect().right<=innerWidth-19})
   await assertBuildLayout()
   await buildPanel.locator('.sobp-body').evaluate((node)=>{node.scrollTop=node.scrollHeight})
   await assertBuildLayout()
   await buildPanel.locator('.sobp').screenshot({path:path.join(out,'配装窄窗口与关闭按钮_模拟数据.png')})
-  await buildPanel.locator('.sobp-close').click()
+  await buildPanel.getByRole('button',{name:'关闭对局工具',exact:true}).click()
   await buildPanel.waitFor({state:'detached'})
   await page.setViewportSize({width:1450,height:940})
   bp.myTeam[0].championPickIntent = 103
   bp.actions[0][0].championId = 103
   await page.evaluate((session) => window.qaEmit('/lol-champ-select/v1/session',session), bp)
-  await previewBuild.click()
+  await nativeBuild.click()
   await buildPanel.locator('.sobp-title-name').getByText(/阿狸/).waitFor()
-  await buildPanel.locator('.sobp-close').click()
+  await buildPanel.getByRole('button',{name:'关闭对局工具',exact:true}).click()
   await page.evaluate(async () => {
     const { store } = await import('/src/lib/store.ts')
     store.set('opggBuildRecommendation',false)
