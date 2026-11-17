@@ -1,7 +1,7 @@
 {
   "name": "sona-plus",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.1.1",
   "type": "module",
   "description": "Sona Plus — a customized and extended League of Legends client plugin based on Sona",
   "license": "AGPL-3.0",

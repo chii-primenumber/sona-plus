@@ -1,72 +1,28 @@
 import { styleClientEntry } from '@/lib/client-entry-button'
-import { createElement } from 'react'
-import { createRoot, type Root } from 'react-dom/client'
 import { logger } from '@/index'
 import { lcu, LcuEventUri } from '@/lib/lcu'
 import type { LCUEventMessage, GameflowPhase } from '@/lib/lcu'
 import { injector } from '@/lib/InjectorManager'
-import { GameAnalysisModal } from '@/components/ui/GameAnalysisModal'
+import {showGameToolsWorkspace,closeGameToolsWorkspace} from './opgg-build-recommendation'
 import { syncInGameDetailsLayout } from './in-game-details-layout'
 
 // ==================== 进入游戏自动弹窗战力分析 ====================
 
-/** GameAnalysisModal 的独立 React root */
-let gameAnalysisRoot: Root | null = null
-let gameAnalysisContainer: HTMLDivElement | null = null
-let gameAnalysisCloseTimer: number | null = null
+let ownsWorkspace=false
 let popupRequestToken = 0
 let autoPopupAttempted = false
 
-const MODAL_CLOSE_ANIMATION_MS = 240
-
 function showGameAnalysisModal() {
-  if (gameAnalysisCloseTimer != null) {
-    window.clearTimeout(gameAnalysisCloseTimer)
-    gameAnalysisCloseTimer = null
-  }
-
-  if (!gameAnalysisContainer) {
-    gameAnalysisContainer = document.createElement('div')
-    gameAnalysisContainer.id = 'sona-game-analysis-root'
-    document.body.appendChild(gameAnalysisContainer)
-    gameAnalysisRoot = createRoot(gameAnalysisContainer)
-  }
-
-  const close = () => {
-    // 记住用户的关闭意图：本局即使 phase 再抖动（断线重连等）也不自动弹回来
-    dismissedPopupGameId = lastPopupGameId
-    const rootAtClose = gameAnalysisRoot
-    rootAtClose?.render(
-      createElement(GameAnalysisModal, { open: false, onClose: close }),
-    )
-    logger.info('[GameAnalysis] 战力分析弹窗已关闭 → dismissedGameId=%d', dismissedPopupGameId)
-
-    if (gameAnalysisCloseTimer != null) window.clearTimeout(gameAnalysisCloseTimer)
-    gameAnalysisCloseTimer = window.setTimeout(() => {
-      gameAnalysisCloseTimer = null
-      if (gameAnalysisRoot === rootAtClose) cleanupGameAnalysisModal()
-    }, MODAL_CLOSE_ANIMATION_MS)
-  }
-
-  gameAnalysisRoot!.render(
-    createElement(GameAnalysisModal, { open: true, onClose: close }),
-  )
-  logger.info('[GameAnalysis] 战力分析弹窗已显示')
+  ownsWorkspace=true
+  void showGameToolsWorkspace('history','game',undefined,()=>{
+    dismissedPopupGameId=lastPopupGameId
+    ownsWorkspace=false
+    logger.info('[GameAnalysis] 战力分析弹窗已关闭 → dismissedGameId=%d',dismissedPopupGameId)
+  })
 }
-
 function cleanupGameAnalysisModal() {
-  if (gameAnalysisCloseTimer != null) {
-    window.clearTimeout(gameAnalysisCloseTimer)
-    gameAnalysisCloseTimer = null
-  }
-  if (gameAnalysisRoot) {
-    gameAnalysisRoot.unmount()
-    gameAnalysisRoot = null
-  }
-  if (gameAnalysisContainer) {
-    gameAnalysisContainer.remove()
-    gameAnalysisContainer = null
-  }
+  if(ownsWorkspace)closeGameToolsWorkspace()
+  ownsWorkspace=false
 }
 
 // ---- 客户端内嵌按钮 ----

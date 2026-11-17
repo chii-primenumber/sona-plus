@@ -43,6 +43,7 @@ import { SharedRequests } from '@/lib/shared-requests'
 
 const TARGET_SELECTOR = '.toggle-ability-previews-button'
 const HIJACK_ATTR = 'data-sona-opgg-build-hijacked'
+let workspaceOnClose:(()=>void)|null=null
 let workspaceView:'history'|'build'='build'
 let workspaceMode:TeamHistoryMode='game'
 let workspaceRequest=0
@@ -1612,6 +1613,7 @@ function closePanel() {
 
 function closeInGameBuildRecommendationModal() {
   if (!inGameModalRoot) return
+  const notifyClosed=workspaceOnClose;workspaceOnClose=null;notifyClosed?.()
   // Invalidate pending data callbacks before starting the exit animation.
   inGameModalRenderToken++
   window.clearTimeout(inGameModalCloseTimer)
@@ -1643,6 +1645,7 @@ function closeInGameBuildRecommendationModal() {
 }
 
 function cleanupInGameBuildRecommendationModal() {
+  workspaceOnClose=null
   inGameModalRenderToken++
   window.clearTimeout(inGameModalCloseTimer); inGameModalCloseTimer = 0
   if (inGameModalRoot) {
@@ -1792,7 +1795,8 @@ async function loadWorkspaceBuild() {
   }
 }
 export function closeGameToolsWorkspace() {cleanupInGameBuildRecommendationModal()}
-export async function showGameToolsWorkspace(view:'history'|'build',mode:TeamHistoryMode='game',party:ReadonlySet<string>=new Set()) {
+export async function showGameToolsWorkspace(view:'history'|'build',mode:TeamHistoryMode='game',party:ReadonlySet<string>=new Set(),onClose?:()=>void) {
+  if(onClose)workspaceOnClose=onClose
   workspaceView=view;workspaceMode=mode;workspaceParty=party;workspaceRequest++
   workspaceBuildReady=false;workspaceBuildLoading=false;workspaceBuildError=''
   const token=++inGameModalRenderToken

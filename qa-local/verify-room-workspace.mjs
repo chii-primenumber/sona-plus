@@ -53,6 +53,24 @@ export async function verifyRoomWorkspace(page,out,games){
   const native=host.querySelector('lol-uikit-flat-button');native.replaceWith(native.cloneNode(true))
  })
  await entry.waitFor();assert.equal(await entry.count(),1)
+ await page.evaluate(async()=>{
+  const state=window.qaRoom;state.build.closeGameToolsWorkspace()
+  const popup=await import('/src/lib/features/game-analysis-popup.ts')
+  state.oldSession=state.lcu.getGameflowSession
+  const session=await state.oldSession.call(state.lcu)
+  state.lcu.getGameflowSession=async()=>({...session,gameData:{...session.gameData,gameId:987654321}})
+  const uri='/lol-gameflow/v1/gameflow-phase',before=new Set(state.listeners.get(uri)||[])
+  popup.updateGameAnalysisPopup(true)
+  state.popup=popup;state.popupCallback=[...state.listeners.get(uri)].find(callback=>!before.has(callback))
+  state.popupCallback({data:'InProgress'})
+ })
+ await page.getByRole('group',{name:'对局工具切换',exact:true}).waitFor()
+ assert.equal(await page.locator('#sona-game-analysis-root').count(),0)
+ assert.equal(await page.getByRole('button',{name:'配装推荐',exact:true}).count(),1)
+ await page.getByRole('button',{name:'关闭对局工具',exact:true}).click()
+ await page.evaluate(async()=>{const state=window.qaRoom;state.popupCallback({data:'Reconnect'});state.popupCallback({data:'InProgress'});await new Promise(resolve=>setTimeout(resolve,50))})
+ assert.equal(await page.locator('.sona-game-tools').count(),0)
+ await page.evaluate(()=>{window.qaRoom.popup.updateGameAnalysisPopup(false);window.qaRoom.lcu.getGameflowSession=window.qaRoom.oldSession})
  await page.evaluate(()=>{
   const {team,build,lcu,old,listeners,host}=window.qaRoom
   for(const callback of listeners.get('/lol-lobby/v2/lobby')||[])callback({eventType:'Delete',data:null})

@@ -1,6 +1,6 @@
 # Sona Plus
 
-**Sona Plus v1.1.0** is a customized and extended version of the original Sona League of Legends client plugin by WJZ_P. It preserves the original project's foundations while adding ongoing enhancements by chii-primenumber, especially for match history presentation, champion builds, and client UI.
+**Sona Plus v1.1.1** is a customized and extended version of the original Sona League of Legends client plugin by WJZ_P. It preserves the original project's foundations while adding ongoing enhancements by chii-primenumber, especially for match history presentation, champion builds, and client UI.
 
 Sona Plus is a derivative of the original Sona project. The original author, copyright notices, and AGPL-3.0 license remain acknowledged. New and modified features are developed and maintained by chii-primenumber.
 
