@@ -1,6 +1,6 @@
-# Sona 一键安装说明
+# Sona Plus 一键安装说明
 
-适用于 64 位 Windows 10（1803 或更新版本）和 Windows 11。安装包已包含 Sona 个人版和官方 Pengu Loader v1.1.6，无需另外下载 Loader。
+适用于 64 位 Windows 10（1803 或更新版本）和 Windows 11。安装包已包含 Sona Plus 和官方 Pengu Loader v1.1.6，无需另外下载 Loader。
 
 ## 第一次安装
 
@@ -8,9 +8,9 @@
 2. **把整个 ZIP 解压到一个普通文件夹**，例如桌面的 `Sona安装包`。不要在压缩软件内直接双击，也不要解压到英雄联盟、Riot Client 或现有 Loader 目录中。
 3. 退出英雄联盟客户端和 Pengu Loader 管理窗口。脚本不会强制关闭客户端或对局。
 4. 双击 **一键安装.cmd**，在 Windows 管理员授权提示中选择“是”。
-5. 等待“安装完成”，重新启动英雄联盟客户端，按 **F1** 打开 Sona。
+5. 等待“安装完成”，重新启动英雄联盟客户端，按 **F1** 打开 Sona Plus。
 
-脚本会校验安装包，查找客户端，复用已有 Pengu Loader；未安装时放在 `C:\Program Files\Pengu Loader`。随后完整备份原 Loader、插件与设置，保留已有 `assets`、其他插件和本机配置，安装 Sona，并调用官方 Loader 的激活命令。成功后不需要再手动打开 Loader 激活开关。
+脚本会校验安装包，查找客户端，复用已有 Pengu Loader；未安装时放在 `C:\Program Files\Pengu Loader`。随后完整备份原 Loader、插件与设置，保留已有 `assets`、其他插件和本机配置，安装 Sona Plus，并调用官方 Loader 的激活命令。插件目录仍为 `sona`，以兼容已有资源和设置。成功后不需要再手动打开 Loader 激活开关。
 
 自动查找会检查进程路径、既有 Loader 配置、Riot 安装记录、注册表安装信息、桌面／开始菜单快捷方式，以及各本地磁盘的常见 Riot、WeGame 和腾讯游戏目录。找到多个客户端时选择序号；一个都没有找到时，按提示粘贴目录。可以填：
 

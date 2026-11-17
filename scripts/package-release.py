@@ -1,4 +1,4 @@
-"""Build the plugin ZIP and an offline Pengu+Sona installer from pinned inputs."""
+"""Build the Sona Plus plugin ZIP and offline Pengu installer from pinned inputs."""
 import argparse
 import hashlib
 import json
@@ -27,7 +27,7 @@ def package(pengu_zip, output):
         raise ValueError('Official Pengu ZIP SHA256 does not match the pinned artifact')
     version = json.loads((ROOT / 'package.json').read_text(encoding='utf-8'))['version']
     output.mkdir(parents=True, exist_ok=True)
-    bundle = output / f'Sona_{version}_Windows一键安装'
+    bundle = output / f'SonaPlus_{version}_Windows一键安装'
     if bundle.exists():
         raise FileExistsError(f'Use a new output directory; will not overwrite {bundle}')
     bundle.mkdir()
@@ -41,7 +41,7 @@ def package(pengu_zip, output):
     shutil.copy2(ROOT / 'LICENSE', plugin / 'LICENSE')
     shutil.copy2(ROOT / 'README_个人版.md', plugin / 'README.md')
     shutil.copy2(ROOT / 'AKARI评分说明.md', bundle / 'AKARI评分说明.md')
-    for source, target in [('installer/INSTALL.md', '安装说明.md'), ('installer/THIRD_PARTY_NOTICES.md', '第三方项目与许可.md'), ('README.md', 'Sona功能介绍.md'), ('installer/vendor.json', 'vendor.json')]:
+    for source, target in [('installer/INSTALL.md', '安装说明.md'), ('installer/THIRD_PARTY_NOTICES.md', '第三方项目与许可.md'), ('README.md', 'SonaPlus功能介绍.md'), ('installer/vendor.json', 'vendor.json')]:
         shutil.copy2(ROOT / source, bundle / target)
     # BOM is necessary for Chinese messages in Windows PowerShell 5.1.
     ps_text = (ROOT / 'installer/Install-Sona.ps1').read_text(encoding='utf-8-sig')
@@ -67,9 +67,9 @@ def package(pengu_zip, output):
         if file.is_file():
             manifest['files'].append({'path': file.relative_to(bundle).as_posix(), 'sha256': sha256(file)})
     (bundle / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
-    all_in_one = output / f'sona-v{version}-one-click-windows.zip'
+    all_in_one = output / f'sona-plus-v{version}-one-click-windows.zip'
     write_zip(bundle, all_in_one)
-    plugin_only = output / f'sona-v{version}.zip'
+    plugin_only = output / f'sona-plus-v{version}.zip'
     with zipfile.ZipFile(plugin_only, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for file in sorted(plugin.rglob('*')):
             if file.is_file():

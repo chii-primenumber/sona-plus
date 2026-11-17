@@ -1,13 +1,17 @@
 id: sona
-name: Sona
-description: Client enhancement suite — champion select tools, OP.GG builds, match history and beautification.
+name: Sona Plus
+description: A customized Sona edition with enhanced match history, champion builds and client UI.
 version: $package.version
 
-repo: https://github.com/WJZ-P/sona
+repo: https://github.com/chii-primenumber/sona-plus
 
 author:
-  name: WJZ-P
+  name: WJZ_P
   github: WJZ-P
+
+maintainer:
+  name: chii-primenumber
+  github: chii-primenumber
 
 tags: [utility, ui, champ-select]
 

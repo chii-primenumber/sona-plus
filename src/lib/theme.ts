@@ -1,3 +1,4 @@
+import { initScrollbarVisibility } from '@/lib/scrollbar-visibility'
 import { store } from '@/lib/store'
 import '@/styles/Theme.css'
 import '@/styles/ClientSurfaces.css'
@@ -9,5 +10,7 @@ export function initSonaTheme() {
     document.documentElement.dataset.sonaTheme = 'client'
   }
   applyTheme()
-  return store.onChange('theme', applyTheme)
+  const stopScrollbars = initScrollbarVisibility()
+  const stopTheme = store.onChange('theme', applyTheme)
+  return () => { stopTheme(); stopScrollbars() }
 }

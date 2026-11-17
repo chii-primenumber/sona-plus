@@ -350,11 +350,11 @@ function Invoke-SonaDeployment([string]$PackageRoot,[string]$LeagueDir,[string]$
         $metadata.written=@($written)
         $metadata.status='installed'
         $metadata | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $backupDir 'backup.json') -Encoding UTF8
-        Write-Step ('安装完成：Sona '+$manifest.version)
+        Write-Step ('安装完成：Sona Plus '+$manifest.version)
         Write-Step ('客户端：'+$LeagueDir)
         Write-Step ('Loader：'+$LoaderDir)
         Write-Step ('备份：'+$backupDir)
-        Write-Step '现在可重新启动英雄联盟客户端，按 F1 打开 Sona。'
+        Write-Step '现在可重新启动英雄联盟客户端，按 F1 打开 Sona Plus。'
         return $backupDir
     } catch {
         $failure = $_
@@ -417,7 +417,7 @@ function Start-SonaInstaller {
     $dataRoot = Join-Path $env:ProgramData 'Sona'
     [IO.Directory]::CreateDirectory((Join-Path $dataRoot 'Logs')) | Out-Null
     $script:LogFile = Join-Path $dataRoot ('Logs\install_'+(Get-Date -Format 'yyyyMMdd_HHmmss')+'.log')
-    Write-Step 'Sona 一键安装'
+    Write-Step 'Sona Plus 一键安装'
     $leagueDir = Select-LeagueDirectory $LeaguePath @(Get-LeagueCandidates)
     Write-Step ('已找到客户端：'+$leagueDir)
     while (@(Get-Process -Name LeagueClient,LeagueClientUx,'League of Legends','Pengu Loader' -ErrorAction SilentlyContinue).Count -gt 0) {

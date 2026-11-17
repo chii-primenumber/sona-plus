@@ -5,7 +5,7 @@ import { useI18n } from '@/i18n'
 import '@/styles/UpdatePage.css'
 
 const GROUP_FILE_URL = ''
-const QUARK_URL = 'https://pan.quark.cn/s/72e3caf2e3d9'
+const QUARK_URL = ''
 
 function formatPublishedDate(value: string): string {
   const date = new Date(value)

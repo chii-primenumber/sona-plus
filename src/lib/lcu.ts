@@ -1807,7 +1807,7 @@ class LCUManager {
     }
     const pages = await this.getRunePages()
     const isEditable = (p: RunePage) => p.isEditable !== false
-    const isSonaManaged = (p: RunePage) => /\s-\s*Sona$/i.test(p.name)
+    const isSonaManaged = (p: RunePage) => /\s-\s*Sona(?: Plus)?$/i.test(p.name)
     const cleanupDuplicateSonaPages = async (keepId: number) => {
       await Promise.allSettled(
         pages

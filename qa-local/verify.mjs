@@ -1,3 +1,5 @@
+import { verifyScrollVisibility } from './verify-scroll-visibility.mjs'
+import { verifyBrand } from './verify-brand.mjs'
 import { selectOption } from './select-option.mjs'
 import { createServer } from 'vite'
 import { createRequire } from 'node:module'
@@ -267,7 +269,11 @@ try {
     return route.continue()
   })
   await page.goto(`${origin}/qa-local/index.html`)
-  if (process.env.SONA_UI44_ONLY) {
+  await verifyBrand(page,out)
+  await verifyScrollVisibility(page)
+  if (process.env.SONA_BRAND_ONLY) {
+    assert.equal(errors.length,0,errors.join('\n'))
+  } else if (process.env.SONA_UI44_ONLY) {
     await verifyRichTooltips(page,out)
     await page.getByPlaceholder(/名字#Tag/).fill('练习星轨#DEMO')
     await page.getByRole('button',{name:'查询战绩',exact:true}).click()
@@ -298,8 +304,8 @@ try {
     await page.evaluate(async()=>(await import('/src/lib/store.ts')).store.set('opggBuildRecommendation',true))
     await page.getByRole('button',{name:'模拟进游戏',exact:true}).click()
     await page.locator('[data-sona-opgg-ingame-build]').waitFor()
-    const entries=await page.locator('.game-in-progress-container .sona-client-icon-button').evaluateAll((nodes)=>nodes.map((node)=>{const box=node.getBoundingClientRect();return {width:box.width,height:box.height,radius:getComputedStyle(node).borderRadius}}))
-    assert.equal(entries.length,2);assert.ok(entries.every((row)=>row.width===32&&row.height===32&&row.radius==='50%'),JSON.stringify(entries))
+    const entries=await page.locator('.game-in-progress-container .sona-client-text-button').evaluateAll((nodes)=>nodes.map((node)=>{const box=node.getBoundingClientRect();return {width:box.width,height:box.height,radius:getComputedStyle(node).borderRadius}}))
+    assert.equal(entries.length,2);assert.ok(entries.every((row)=>row.width===264&&row.height>=32&&row.radius!=='50%'),JSON.stringify(entries))
     await page.locator('.qa-in-game-screen').screenshot({path:path.join(out,'游戏中对局详情入口_模拟界面.png')})
     await page.locator('[data-sona-team-history="game"]').click()
     const team=page.getByTestId('game-history')
@@ -570,10 +576,14 @@ try {
   const scrollBox = await mainScroll.boundingBox()
   await page.mouse.move(4,4)
   await page.waitForFunction(()=>!document.querySelector('.rh-content').hasAttribute('data-sona-scrollbar-hover'))
+  await page.waitForFunction(()=>!document.querySelector('.rh-content').hasAttribute('data-sona-scrolling'))
   const normalScrollbarColor = await mainScroll.evaluate((node)=>getComputedStyle(node,'::-webkit-scrollbar-thumb').backgroundColor)
   await page.mouse.move(scrollBox.x+scrollBox.width-25,scrollBox.y+18)
   await page.mouse.move(scrollBox.x+scrollBox.width-16,scrollBox.y+18,{steps:3})
   assert.equal(await mainScroll.getAttribute('data-sona-scrollbar-hover'),'')
+  assert.equal(await mainScroll.evaluate((node)=>getComputedStyle(node,'::-webkit-scrollbar-thumb').backgroundColor),'rgba(0, 0, 0, 0)')
+  await mainScroll.evaluate(node=>{node.scrollTop=1})
+  await page.waitForFunction(()=>document.querySelector('.rh-content').hasAttribute('data-sona-scrolling'))
   const highlightedColor = await mainScroll.evaluate((node)=>getComputedStyle(node,'::-webkit-scrollbar-thumb').backgroundColor)
   assert.notEqual(highlightedColor,normalScrollbarColor)
   assert.ok(highlightedColor.includes('0.95'))
@@ -1011,7 +1021,7 @@ try {
       return { track: track.backgroundColor, thumb: thumb.backgroundColor, buttons: buttons.display, scrolls, width:getComputedStyle(element,'::-webkit-scrollbar').width }
     })
     assert.equal(scrollbar.track, 'rgba(0, 0, 0, 0)')
-    assert.ok(/0\.36|0\.95/.test(scrollbar.thumb))
+    assert.ok(/0\.36|0\.95|rgba\(0, 0, 0, 0\)/.test(scrollbar.thumb))
     assert.equal(scrollbar.width,'14px')
     assert.equal(scrollbar.buttons, 'none')
     assert.ok(scrollbar.scrolls)
@@ -1174,6 +1184,11 @@ try {
   assert.equal(await gameEntry.getAttribute('aria-label'),'对局详情')
   assert.equal(await gameEntry.evaluate((node)=>node.tagName),'LOL-UIKIT-FLAT-BUTTON')
   const detailsBox=await gameEntry.boundingBox(), buildEntryBox=await ingameBuild.boundingBox()
+  assert.equal(await gameEntry.textContent(),'对局详情')
+  assert.equal(await ingameBuild.textContent(),'配装推荐')
+  assert.equal(await gameEntry.locator('svg').count(),0)
+  assert.equal(await ingameBuild.locator('svg').count(),0)
+  assert.equal(detailsBox.width,264)
   assert.equal(detailsBox.width,buildEntryBox.width)
   assert.ok(buildEntryBox.y >= detailsBox.y+detailsBox.height+7)
   assert.equal(await page.locator('.game-in-progress-container').evaluate((node)=>getComputedStyle(node).fontSize),'0px')

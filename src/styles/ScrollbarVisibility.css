@@ -1,0 +1,19 @@
+/* Idle scrollbars keep their layout and drag area, but draw no thumb or track. */
+:is(#sona-root, .sona-modal-overlay, .sobp, .sona-select-dropdown, .rh-asset-tooltip, .sobp-tooltip):not([data-sona-scrolling])::-webkit-scrollbar-thumb,
+:is(#sona-root, .sona-modal-overlay, .sobp, .sona-select-dropdown, .rh-asset-tooltip, .sobp-tooltip) :not([data-sona-scrolling])::-webkit-scrollbar-thumb,
+:is(#sona-root, .sona-modal-overlay, .sobp, .sona-select-dropdown, .rh-asset-tooltip, .sobp-tooltip):not([data-sona-scrolling])::-webkit-scrollbar-track,
+:is(#sona-root, .sona-modal-overlay, .sobp, .sona-select-dropdown, .rh-asset-tooltip, .sobp-tooltip) :not([data-sona-scrolling])::-webkit-scrollbar-track,
+:is(#sona-root, .sona-modal-overlay, .sobp, .sona-select-dropdown, .rh-asset-tooltip, .sobp-tooltip):not([data-sona-scrolling])::-webkit-scrollbar-track-piece,
+:is(#sona-root, .sona-modal-overlay, .sobp, .sona-select-dropdown, .rh-asset-tooltip, .sobp-tooltip) :not([data-sona-scrolling])::-webkit-scrollbar-track-piece,
+:is(#sona-root, .sona-modal-overlay, .sobp, .sona-select-dropdown, .rh-asset-tooltip, .sobp-tooltip):not([data-sona-scrolling])::-webkit-scrollbar-corner,
+:is(#sona-root, .sona-modal-overlay, .sobp, .sona-select-dropdown, .rh-asset-tooltip, .sobp-tooltip) :not([data-sona-scrolling])::-webkit-scrollbar-corner {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Portal roots can themselves scroll, so give them the shared visible thumb. */
+:where(#sona-root, .sona-modal-overlay, .sobp, .sona-select-dropdown, .rh-asset-tooltip, .sobp-tooltip)[data-sona-scrolling]::-webkit-scrollbar-thumb {
+  background: rgba(194, 186, 218, .36);
+  border-radius: 999px;
+}

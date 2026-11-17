@@ -121,11 +121,14 @@ function penguBuild(): Plugin {
         // Pengu Loader 插件头注释（识别插件元信息用）
         const banner = [
           '/**',
-          ' * @name Sona',
+          ' * @name Sona Plus',
           ` * @version ${pkg.version}`,
-          ' * @description 基于 Sona 1.10.0 的个人战绩增强版：完整战绩、BP 五人和进游戏后双方总览',
-          ' * @author WJZ_P',
-          ' * @link https://github.com/WJZ-P/sona',
+          ' * @description 基于原版 Sona 二次开发的客户端增强插件，扩展战绩展示、英雄配装与界面体验',
+          ' * @author Modified & Maintained by chii-primenumber',
+          ' * @original-author Original Project by WJZ_P',
+          ' * @original-project https://github.com/WJZ-P/sona',
+          ' * @license AGPL-3.0',
+          ' * @link https://github.com/chii-primenumber/sona-plus',
           ' */',
           '',
         ].join('\n')

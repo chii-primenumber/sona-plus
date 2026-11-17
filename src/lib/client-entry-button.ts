@@ -1,5 +1,12 @@
 /** Lightweight static glyphs for native-client entries; no React root per button. */
-export function styleClientEntry(button: HTMLElement, label: string, kind: 'history' | 'team' | 'build') {
+export function styleClientEntry(button: HTMLElement, label: string, kind: 'history' | 'team' | 'build', presentation: 'icon' | 'text' = 'icon') {
+  if (presentation === 'text') {
+    button.classList.add('sona-client-text-button')
+    button.setAttribute('aria-label', label)
+    button.title = label
+    button.textContent = label
+    return
+  }
   button.classList.add('sona-client-icon-button')
   button.setAttribute('aria-label', label)
   button.title = label

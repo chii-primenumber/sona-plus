@@ -175,6 +175,16 @@
   color: rgb(var(--sona-muted-rgb));
 }
 
+.sona-about-text a {
+  color: rgb(var(--sona-accent-rgb));
+  text-decoration: none;
+}
+
+.sona-about-text a:hover {
+  color: rgb(var(--sona-highlight-rgb));
+  text-decoration: underline;
+}
+
 .sona-about-quote {
   margin-top: auto;
   padding-top: 24px;
@@ -185,3 +195,6 @@
   border-top: 1px solid rgb(var(--sona-accent-rgb) / 0.1);
   line-height: 1.6;
 }
+
+.sona-about-attribution { margin-top: 10px; line-height: 1.7; }
+.sona-about .sona-hex-card-text { min-width: 0; overflow-wrap: anywhere; }

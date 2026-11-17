@@ -43,7 +43,7 @@ const PANEL_ID = 'sona-opgg-build-panel'
 const IN_GAME_BUILD_BUTTON_ATTR = 'data-sona-opgg-ingame-build'
 const PRESELECT_BUILD_BUTTON_ATTR = 'data-sona-opgg-preselect-build'
 const DEFAULT_OPGG_TIER: OpggTier = 'master_plus'
-const SONA_ITEM_SET_TITLE_PREFIX = '[Sona]'
+const SONA_ITEM_SET_TITLE_PREFIX = '[Sona Plus]'
 const HEALTH_POTION_ID = 2003
 const ITEM_SET_ASSOCIATED_MAPS = [11, 12, 30]
 // 符文页通过每秒轮询读取（WS 事件经常不推送，轮询更稳定）。
@@ -790,7 +790,7 @@ function getContextModeLabel(context: RecommendationContext): string {
 }
 
 function getSmartRunePageName(context: RecommendationContext): string {
-  return `${getChampionName(context.championId)} ${getModeLabel(resolveOpggMode(context), context)} - Sona`
+  return `${getChampionName(context.championId)} ${getModeLabel(resolveOpggMode(context), context)} - Sona Plus`
 }
 
 function createManagedItemSet(context: RecommendationContext, recommendation: BuildRecommendation): ItemSet | null {
@@ -1995,7 +1995,7 @@ function tryInjectInGameBuildButton(): boolean {
   btn.setAttribute(IN_GAME_BUILD_BUTTON_ATTR, 'true')
   btn.setAttribute('role','button')
   btn.setAttribute('tabindex','0')
-  styleClientEntry(btn, '配装推荐', 'build')
+  styleClientEntry(btn, '配装推荐', 'build', 'text')
   // 布局（display / 间距）统一在 inject.css 里处理，两个按钮的注入先后不固定
 
   btn.addEventListener('click', (event) => {

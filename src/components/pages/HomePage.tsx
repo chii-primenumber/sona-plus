@@ -129,7 +129,7 @@ export function HomePage() {
         <img
           className="sona-home-avatar"
           src={sonaIcon}
-          alt="Sona"
+          alt="Sona Plus"
           draggable={false}
         />
       </div>

@@ -62,7 +62,7 @@ function createEntryButton(): HTMLElement {
   applyEntryButtonVisibility(btn)
 
   btn.innerHTML = `
-    <img class="sona-entry-icon" src="${sonaIcon}" alt="Sona" />
+    <img class="sona-entry-icon" src="${sonaIcon}" alt="Sona Plus" />
     <span class="sona-entry-update-badge" aria-hidden="true">!</span>
   `
 

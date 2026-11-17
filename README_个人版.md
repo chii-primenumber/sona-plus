@@ -1,12 +1,12 @@
-# Sona 个人战绩增强版
+# Sona Plus v1.0.0
 
-版本为 `1.10.0-personal.44`，基于 **原作者 WJZ-P** 的 **Sona v1.10.0** 定制，沿用原项目的 **AGPL-3.0** 许可。主要增强个人战绩、玩家搜索、队伍总览、对位与回放，采用统一黑金界面和显示设置。队伍卡片与 Akari 评分参考 Hanxven 的 [League Akari](https://github.com/LeagueAkari/LeagueAkari)，评分适配保留其 MIT 许可。[Sona 上游项目](https://github.com/WJZ-P/sona/tree/v1.10.0)
+Sona Plus 是基于 WJZ_P 的 Sona v1.10.0 二次开发的衍生版本，采用独立版本号 **v1.0.0**，继续遵循 **AGPL-3.0**。由 chii-primenumber 持续开发与维护，主要涵盖个人战绩、玩家搜索、队伍总览、对位与回放，以及统一的黑金界面和显示设置。队伍卡片与 Akari 评分参考 Hanxven 的 [League Akari](https://github.com/LeagueAkari/LeagueAkari)，评分适配保留其 MIT 许可。[原版 Sona 项目](https://github.com/WJZ-P/sona) · [Sona Plus 仓库](https://github.com/chii-primenumber/sona-plus)
 
-本个人版新增功能主要参考开源项目 [League Akari](https://github.com/LeagueAkari/LeagueAkari) 的个人战绩、队伍卡片、玩家搜索、数据展示与交互，并适配其评分机制。[完整功能介绍](README.md)
+**Original Project by WJZ_P** · **Modified & Maintained by chii-primenumber**。新增和修改的功能由 chii-primenumber 开发与维护；原作者 WJZ_P 及原项目贡献继续保留署名。[完整功能介绍](README.md)
 
 ## 一键安装
 
-Release 中带 `one-click-windows.zip` 的包包含官方 Pengu Loader v1.1.6、Sona、脚本与说明。完整解压后退出客户端和 Loader 管理窗口，双击「一键安装.cmd」并允许管理员授权。脚本自动寻找客户端、备份旧安装、保留自定义资源与设置、安装并激活；搜索不到时按提示粘贴目录。运行库缺失时从微软官网下载补齐。完成后重新启动客户端，按 F1 打开。
+从 [Sona Plus Releases](https://github.com/chii-primenumber/sona-plus/releases) 下载。带 `one-click-windows.zip` 的包包含官方 Pengu Loader v1.1.6、Sona Plus、脚本与说明。完整解压后退出客户端和 Loader 管理窗口，双击「一键安装.cmd」并允许管理员授权。脚本自动寻找客户端、备份旧安装、保留自定义资源与设置、安装并激活；搜索不到时按提示粘贴目录。运行库缺失时按说明处理。完成后重新启动客户端，按 F1 打开 Sona Plus。
 
 [详细安装说明、备份位置与回退方式](installer/INSTALL.md)。下列方法用于已有 Loader 时手动安装仅插件包。
 
@@ -15,8 +15,8 @@ Release 中带 `one-click-windows.zip` 的包包含官方 Pengu Loader v1.1.6、
 1. 退出英雄联盟客户端。在 **Pengu Loader → Plugins** 中打开插件目录。
 2. 将已经安装的 `sona` 文件夹整个备份到**插件目录外**。先留好这一份，以便回退。
 3. 将交付目录里的 `sona` 文件夹复制到插件目录。确认结构为 `plugins/sona/index.js`，旁边有 `index.css` 和 `assets`。
-4. 如果原版 `assets` 中有你自己的壁纸、视频或头像，把这些自定义文件复制到新版 `sona/assets` 中。请只启用一份 Sona。保留 `sona` 文件夹名，以便沿用原先的资源路径和设置。
-5. 刷新 Pengu Loader 的插件列表，确认 Sona 已启用，再启动 LOL 客户端。个人版在客户端中显示版本 `1.10.0-personal.44`。
+4. 如果原版 `assets` 中有你自己的壁纸、视频或头像，把这些自定义文件复制到新版 `sona/assets` 中。请只启用一份 Sona Plus。保留 `sona` 文件夹名，以便沿用原先的资源路径和设置。
+5. 刷新 Pengu Loader 的插件列表，确认 Sona Plus 已启用，再启动 LOL 客户端。面板和 About 页面显示版本 `v1.0.0`。插件目录继续命名为 `sona`，以兼容已有资源和设置。
 
 回退时，退出客户端，把个人版移出插件目录，再把备份的原版 `sona` 移回去，刷新插件列表后重启。定制版不会在启动时主动弹出上游更新提示，避免将定制代码误覆盖。
 
@@ -86,7 +86,7 @@ Release 中带 `one-click-windows.zip` 的包包含官方 Pengu Loader v1.1.6、
 
 浏览器模拟覆盖了旧主题迁移、玩家搜索、跨大区请求路由、显示设置、段位徽章、占比条、装备与海克斯提示，以及两个队伍页、生涯按钮和右键菜单。真实客户端的跨区接口仍待安装后确认。
 
-定制源码和修改记录保存在本地 Git 分支 `personal/match-history`。安装依赖后运行 `npm run build`，构建结果保存在 `dist`。
+定制源码和修改记录保存在本地 Git 分支 `dsh/optimized`。安装依赖后运行 `npm run build`，构建结果保存在 `dist`。
 
 ## 加载与特效
 

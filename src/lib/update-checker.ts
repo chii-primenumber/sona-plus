@@ -14,6 +14,8 @@ export interface UpdateInfo {
 }
 
 interface GithubReleaseResponse {
+  draft?: boolean
+  prerelease?: boolean
   tag_name?: string
   name?: string
   html_url?: string
@@ -27,9 +29,9 @@ export interface UpdateState {
   error: string
 }
 
-const RELEASE_PAGE_URL = 'https://com.hytale.net.cn/WJZ-P/sona/releases'
-const GITHUB_API_LATEST = 'https://api.github.com/repos/WJZ-P/sona/releases/latest'
-const GITHUB_API_RELEASES = 'https://api.github.com/repos/WJZ-P/sona/releases'
+const RELEASE_PAGE_URL = 'https://github.com/chii-primenumber/sona-plus/releases'
+const GITHUB_API_LATEST = 'https://api.github.com/repos/chii-primenumber/sona-plus/releases/latest'
+const GITHUB_API_RELEASES = 'https://api.github.com/repos/chii-primenumber/sona-plus/releases'
 
 function wrapCorsProxy(targetUrl: string): string {
   return `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`
@@ -87,7 +89,13 @@ function compareVersion(a: string, b: string): number {
 }
 
 function getSkippedUpdateVersion(): string {
-  return normalizeVersion(store.get('skippedUpdateVersion') ?? '')
+  const version = normalizeVersion(store.get('skippedUpdateVersion') ?? '')
+  return /^\d+\.\d+\.\d+$/.test(version) ? version : ''
+}
+
+function isPlusRelease(release: GithubReleaseResponse): boolean {
+  return !release.draft && !release.prerelease
+    && /^v?\d+\.\d+\.\d+$/.test(release.tag_name ?? '')
 }
 
 async function fetchLatestRelease(): Promise<GithubReleaseResponse> {
@@ -116,9 +124,9 @@ async function fetchLatestRelease(): Promise<GithubReleaseResponse> {
       const parsed = JSON.parse(text) as unknown
       const data = kind === 'single'
         ? (parsed as GithubReleaseResponse)
-        : (Array.isArray(parsed) && parsed[0] ? (parsed[0] as GithubReleaseResponse) : null)
+        : (Array.isArray(parsed) ? parsed.find((entry) => entry && isPlusRelease(entry)) as GithubReleaseResponse | undefined : null)
 
-      if (!data?.tag_name) {
+      if (!data?.tag_name || !isPlusRelease(data)) {
         errors.push(`${url} -> missing tag_name`)
         continue
       }
@@ -169,7 +177,7 @@ export function checkForUpdates(): Promise<UpdateState> {
         info: {
           currentVersion,
           latestVersion,
-          releaseName: release.name || `Sona v${latestVersion}`,
+          releaseName: release.name || `Sona Plus v${latestVersion}`,
           releaseUrl: release.html_url || RELEASE_PAGE_URL,
           releaseBody: release.body || '该版本没有填写更新说明。',
           publishedAt: release.published_at || '',
@@ -221,8 +229,8 @@ function notifyUpdateAvailable(currentVersion: string, latestVersion: string) {
   notifiedVersion = latestVersion
 
   void lcu.sendNotification(
-    '检测到 Sona 新版本',
-    `${currentVersion} → ${latestVersion}，打开 Sona 面板查看更新内容。`,
+    '检测到 Sona Plus 新版本',
+    `${currentVersion} → ${latestVersion}，打开 Sona Plus 面板查看更新内容。`,
   ).catch((err) => {
     notifiedVersion = ''
     logger.warn('[Update] 发送更新通知失败:', err)
