@@ -30,6 +30,8 @@ import type { OpggTier } from '@/lib/opgg-api'
 
 /** 所有配置项及其类型 */
 export interface SonaConfig {
+  dismissedUpdateNotice:string|null
+  enemyMatchupMetric:'win'|'lane'
   automaticUpdateCheck: boolean
   lastUpdateCheckAt: number
   readAnnouncementVersion: string | null
@@ -272,6 +274,8 @@ const DEFAULT_CONFIG: SonaConfig = {
   hideSonaIcon: false,
   locale: 'auto',
   skippedUpdateVersion: null,
+  dismissedUpdateNotice:null,
+  enemyMatchupMetric:'win',
   automaticUpdateCheck: true,
   lastUpdateCheckAt: 0,
   readAnnouncementVersion: null,

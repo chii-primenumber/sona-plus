@@ -1,3 +1,6 @@
+import {getMatchupDetail,laneKillRate} from '@/lib/matchup-details'
+import {SonaSegmented} from './SonaSegmented'
+import {MatchupDetailsModal} from './MatchupDetailsModal'
 import { useEffect, useState } from 'react'
 import { Modal } from './Modal'
 import { OpggBuildRecommendationPanel, OPGG_TIER_OPTIONS } from './OpggBuildRecommendationPanel'
@@ -10,6 +13,7 @@ interface MatchupQuery {
   items: OpggMatchup[]
   version?: string
   error: string
+  laneRates?:Record<number,number|null>
 }
 
 export function EnemyOpggMatchupModal({ championId, queueId, initialPosition, onClose }: {
@@ -23,6 +27,8 @@ export function EnemyOpggMatchupModal({ championId, queueId, initialPosition, on
     const saved = store.get('enemyOpggMatchupTier')
     return OPGG_TIER_OPTIONS.some((option)=>option.value===saved) ? saved : 'emerald_plus'
   })
+  const [metric,setMetric]=useState<'win'|'lane'>(()=>store.get('enemyMatchupMetric')==='lane'?'lane':'win')
+  const [target,setTarget]=useState<number|null>(null)
   const [query, setQuery] = useState<MatchupQuery | null>(null)
   const key = `${championId}:${position}:${tier}`
   const current = query?.key === key ? query : null
@@ -65,13 +71,20 @@ export function EnemyOpggMatchupModal({ championId, queueId, initialPosition, on
     return () => controller.abort()
   }, [championId, position, tier, key])
 
-  return (
+    useEffect(()=>{setTarget(null)},[championId,position,tier])
+  useEffect(()=>{
+    if(metric!=='lane'||!current||current.error||current.laneRates)return
+    const controller=new AbortController(),items=current.items
+    void Promise.all(items.map(async item=>{try{const detail=await getMatchupDetail(championId,item.championId,position,tier,controller.signal);return [item.championId,laneKillRate(detail.data.find(row=>row.champion_id===championId))] as const}catch{return [item.championId,null] as const}})).then(rows=>{if(!controller.signal.aborted)setQuery(previous=>previous?.key===key?{...previous,laneRates:Object.fromEntries(rows)}:previous)})
+    return()=>controller.abort()
+  },[metric,key,current?.key,current?.error,Boolean(current?.laneRates),championId,position,tier])
+  return (<>
     <Modal open onClose={onClose} width="min(990px, 94vw)" height="min(640px, 89vh)" closable={false}>
-      <div className="sona-opgg-modal-content" data-testid="enemy-opgg-matchups">
+      <div className="sona-opgg-modal-content" data-testid="enemy-opgg-matchups"><div style={{padding:'8px 16px'}}><SonaSegmented label="克制判断依据" value={metric} options={[{value:'win',label:'整局胜率'},{value:'lane',label:'线杀率'}]} onChange={value=>{setMetric(value);store.set('enemyMatchupMetric',value)}}/>{metric==='lane'&&!current?.laneRates&&<small> 正在读取线杀率…</small>}</div>
         <OpggBuildRecommendationPanel
           context={{ championId, queueId, position, gameVersion: '', gameMode: 'CLASSIC' }}
           recommendation={null}
-          koreanMatchups={{ items: current?.items ?? [], version: current?.version }}
+          koreanMatchups={{ items: (current?.items ?? []).map(item=>({...item,laneKillRate:current?.laneRates?.[item.championId]})), version: current?.version,metric,onSelect:setTarget }}
           isLoading={position !== 'none' && !current}
           loadError={current?.error ?? ''}
           selectedTier={tier}
@@ -81,5 +94,7 @@ export function EnemyOpggMatchupModal({ championId, queueId, initialPosition, on
         />
       </div>
     </Modal>
+    {target!==null&&<MatchupDetailsModal championId={championId} targetId={target} position={position} tier={tier} opponents={current?.items??[]} onTargetChange={setTarget} onClose={()=>setTarget(null)}/>}
+    </>
   )
 }

@@ -1,7 +1,7 @@
 declare const __PLUGIN_VERSION__: string
+declare const __PLUGIN_RELEASE_NOTES__: string
 
 import { logger } from '@/index'
-import { lcu } from '@/lib/lcu'
 import { store } from '@/lib/store'
 
 export interface UpdateInfo {
@@ -237,20 +237,17 @@ function notifyUpdateAvailable(currentVersion: string, latestVersion: string) {
   if (notifiedVersion === latestVersion || store.get('readAnnouncementVersion') === latestVersion) return
   notifiedVersion = latestVersion
 
-  void lcu.sendNotification(
-    '检测到 Sona Plus 新版本',
-    `${currentVersion} → ${latestVersion}，打开 Sona Plus 面板查看更新内容。`,
-  ).catch((err) => {
-    notifiedVersion = ''
-    logger.warn('[Update] 发送更新通知失败:', err)
-  })
+  logger.info('[Update] 插件内更新提醒已就绪：%s → %s',currentVersion,latestVersion)
+
 }
 
 export function getReleaseAnnouncement(): UpdateInfo | null {
   const value=store.get('releaseAnnouncement')
-  if (!value || typeof value.latestVersion!=='string' || typeof value.releaseBody!=='string' || typeof value.releaseName!=='string' || typeof value.releaseUrl!=='string') return null
-  return {...value,currentVersion:__PLUGIN_VERSION__}
+  if(value && typeof value.latestVersion==='string' && typeof value.releaseBody==='string' && typeof value.releaseName==='string' && typeof value.releaseUrl==='string' && compareVersion(value.latestVersion,__PLUGIN_VERSION__)>=0)return {...value,currentVersion:__PLUGIN_VERSION__}
+  const body=typeof __PLUGIN_RELEASE_NOTES__==='string'?__PLUGIN_RELEASE_NOTES__:''
+  return body?{currentVersion:__PLUGIN_VERSION__,latestVersion:__PLUGIN_VERSION__,releaseName:`Sona Plus v${__PLUGIN_VERSION__}`,releaseBody:body,releaseUrl:`${RELEASE_PAGE_URL}/tag/v${__PLUGIN_VERSION__}`,publishedAt:''}:null
 }
+
 let backgroundInitialized=false
 let lastAttempt=0
 export function checkUpdatesInBackground() {

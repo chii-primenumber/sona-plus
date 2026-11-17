@@ -157,6 +157,7 @@ export interface OpggCounter {
 }
 
 export interface OpggMatchup {
+  laneKillRate?:number|null
   championId: number
   play: number
   win: number
@@ -407,6 +408,10 @@ export class OpggDataApi {
       signal,
       timeoutMs,
     })
+  }
+
+  async getCounterDetail(id:number,target:number,position:OpggPosition,tier:OpggTier,signal?:AbortSignal):Promise<{data:Array<Record<string,unknown>>;meta?:{version?:string}}> {
+    return this.request(`/api/kr/champions/ranked/${id}/${position}/counters/${target}`,{params:{tier},signal})
   }
 
   async getARAMBalance(options: OpggRequestOptions = {}): Promise<OpggARAMBalance> {

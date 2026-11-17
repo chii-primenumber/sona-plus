@@ -1123,3 +1123,14 @@
  .sobp-title-actions {grid-row:3;max-width:100%;flex-wrap:wrap}
  .sobp-overview .sobp-summary {flex-wrap:wrap}
 }
+
+.sobp-matchup-avatar {border:0;background:transparent;padding:0;cursor:pointer;flex:none}.sobp-matchup-avatar:disabled {cursor:default}
+
+[data-testid="enemy-opgg-matchups"] {display:flex;flex-direction:column;overflow:hidden}
+[data-testid="enemy-opgg-matchups"] > .sobp {flex:1;min-height:0;height:auto}
+
+.sobp-matchup-details h2 {font-size:16px;color:rgb(var(--sona-text-rgb));margin:0 36px 10px 0}
+.sobp-matchup-details > p {font-size:12px;color:rgb(var(--sona-muted-rgb));margin:0 0 14px}
+.sobp-matchup-details article {padding:14px;border:1px solid rgb(var(--sona-accent-rgb)/.2);background:rgb(var(--sona-base-rgb)/.45);border-radius:4px}
+.sobp-matchup-details article h3 {display:flex;align-items:center;gap:9px;font-size:14px;color:rgb(var(--sona-accent-rgb));margin:0 0 12px}
+.sobp-matchup-details article p {font-size:12px;line-height:1.7;margin:4px 0;color:rgb(var(--sona-text-rgb))}

@@ -153,6 +153,7 @@ function penguBuild(): Plugin {
 export default defineConfig({
   define: {
     __PLUGIN_VERSION__: JSON.stringify(pkg.version),
+    __PLUGIN_RELEASE_NOTES__: JSON.stringify(fs.existsSync(`RELEASE_NOTES_v${pkg.version}.md`)?fs.readFileSync(`RELEASE_NOTES_v${pkg.version}.md`,'utf-8'):''),
     'process.env.NODE_ENV': JSON.stringify('production'),
   },
   plugins: [

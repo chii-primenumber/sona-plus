@@ -1,3 +1,5 @@
+import {verifyUpdatePush} from './verify-update-push.mjs'
+import {verifyMatchupDetails} from './verify-matchup-details.mjs'
 import { verifyBpEntryPerformance } from './verify-bp-entry-performance.mjs'
 import { verifyRoomWorkspace } from './verify-room-workspace.mjs'
 import { verifyNextVersion } from './verify-next-version.mjs'
@@ -99,7 +101,7 @@ const perfSource = {
     if (id.endsWith('/src/components/ui/TeamHistoryModal.tsx')) return code.replace('  const [profile, setProfile]',counter('TeamPlayerCard')+'  const [profile, setProfile]')
   },
 }
-const server = await createServer({ root:base, configFile:false, plugins:[perfSource], resolve:{alias:{'@':path.join(base,'src')}},define:{__PLUGIN_VERSION__:JSON.stringify(version)},server:{host:'127.0.0.1',port:0,open:false,strictPort:true},publicDir:false })
+const server = await createServer({ root:base, configFile:false, plugins:[perfSource], resolve:{alias:{'@':path.join(base,'src')}},define:{__PLUGIN_VERSION__:JSON.stringify(version),__PLUGIN_RELEASE_NOTES__:JSON.stringify(await fs.readFile(path.join(base,`RELEASE_NOTES_v${version}.md`),'utf-8').catch(()=>''))},server:{host:'127.0.0.1',port:0,open:false,strictPort:true},publicDir:false })
 await server.listen()
 const origin = `http://127.0.0.1:${server.httpServer.address().port}`
 let browser
@@ -276,6 +278,8 @@ try {
   await verifyScrollVisibility(page)
   await verifyNextVersion(page,out,games)
   await verifyRoomWorkspace(page,out,games)
+  await verifyMatchupDetails(page,out)
+  await verifyUpdatePush(page)
   if (process.env.SONA_BP_PERF) {
     await verifyBpEntryPerformance(page,out,bp)
     assert.equal(errors.length,0,errors.join('\n'))

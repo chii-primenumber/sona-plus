@@ -1,3 +1,4 @@
+import {UpdatePushNotice} from '@/components/ui/UpdatePushNotice'
 import { useState, useEffect, useMemo } from 'react'
 import '@/styles/App.css'
 import { logger } from '.'
@@ -12,7 +13,7 @@ import { RewardsPage } from '@/components/pages/RewardsPage'
 import { DebugPage } from '@/components/pages/DebugPage'
 import { UpdatePage } from '@/components/pages/UpdatePage'
 import { HomeIcon, GamepadIcon, PaletteIcon, SettingsIcon, InfoIcon, BugIcon, ZapIcon, GiftIcon } from '@/components/ui/icons'
-import { onModalVisibilityChange, isModalVisible, closeModal } from '@/lib/modal'
+import { onModalVisibilityChange, isModalVisible, closeModal, openModal } from '@/lib/modal'
 import { store } from '@/lib/store'
 import { checkUpdatesInBackground, getUpdateState, onUpdateStateChange, type UpdateState } from '@/lib/update-checker'
 import { useI18n } from '@/i18n'
@@ -121,7 +122,8 @@ export function App() {
     })
   }
 
-  return (
+  return (<>
+    <UpdatePushNotice state={updateState} onView={()=>{setActivePageId('update');openModal()}}/>
     <Modal
       open={visible}
       onClose={handleClose}
@@ -141,5 +143,6 @@ export function App() {
         </div>
       </div>
     </Modal>
+    </>
   )
 }

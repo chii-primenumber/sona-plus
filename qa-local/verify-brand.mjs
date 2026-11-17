@@ -34,6 +34,8 @@ export async function verifyBrand(page, out) {
     const update = await import('/src/lib/update-checker.ts')
     const old = {fetch:window.fetch,notify:lcu.sendNotification,get:lcu.getRunePages,put:lcu.updateRunePage,del:lcu.deleteRunePage,locale:store.get('locale'),skip:store.get('skippedUpdateVersion'),announcement:store.get('releaseAnnouncement'),lastCheck:store.get('lastUpdateCheckAt')}
     const checks = []
+    const embedded=update.getReleaseAnnouncement()
+    if(!embedded?.releaseBody?.includes('# Sona Plus v')||embedded.latestVersion!==document.querySelector('.sona-sidebar-logo-version').textContent.slice(1))throw Error('Embedded current-version announcement missing')
     try {
       lcu.sendNotification = async () => ({})
       let latest = {tag_name:'v1.10.0-personal.44',prerelease:true}
@@ -42,13 +44,13 @@ export async function verifyBrand(page, out) {
       store.set('skippedUpdateVersion','1.10.0-personal.99')
       if ((await update.checkForUpdates()).status !== 'latest') throw Error('Legacy release must not be offered')
       checks.push('legacy release filtering')
-      latest = {tag_name:'v1.1.3',html_url:'https://github.com/chii-primenumber/sona-plus/releases/tag/v1.0.1'}
+      latest = {tag_name:'v1.1.4',html_url:'https://github.com/chii-primenumber/sona-plus/releases/tag/v1.0.1'}
       const first = update.checkForUpdates(), second = update.checkForUpdates()
       if (first !== second) throw Error('Concurrent update checks must share a request')
       const next = await first
-      if (next.status !== 'available' || next.info.latestVersion !== '1.1.3') throw Error('Plus update missing')
+      if (next.status !== 'available' || next.info.latestVersion !== '1.1.4') throw Error('Plus update missing')
       checks.push('Plus update with legacy skip preference and request sharing')
-      update.skipUpdateVersion('1.1.3')
+      update.skipUpdateVersion('1.1.4')
       if ((await update.checkForUpdates()).status !== 'latest') throw Error('Skipped Plus release should stay skipped')
       checks.push('Plus skip preference')
       latest = {tag_name:'v1.10.0-personal.44',prerelease:true}; releases = [latest]

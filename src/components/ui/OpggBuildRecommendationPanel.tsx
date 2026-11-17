@@ -1,3 +1,4 @@
+import {matchesMatchupChampion} from '@/lib/matchup-search'
 import { SampleFilter, useRecommendationPreferences } from './RecommendationControls'
 import { hasEnoughSamples, sampleThreshold } from '@/lib/recommendation-filter'
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
@@ -127,7 +128,7 @@ export interface OpggBuildRecommendationPanelProps {
   onTierChange: (tier: OpggTier) => void
   onPositionChange: (position: OpggPosition) => void
   onClose: () => void
-  koreanMatchups?: { items: OpggMatchup[]; version?: string }
+  koreanMatchups?: { items: OpggMatchup[]; version?: string; metric?:'win'|'lane';onSelect?:(id:number)=>void }
   hideClose?:boolean
   onSwitchToHistory?:()=>void
 }
@@ -212,7 +213,7 @@ export function OpggBuildRecommendationPanel({
           <>
             {context.position === 'none' && <PanelMessage>选择该英雄的分路以查询韩服对位。</PanelMessage>}
             {context.position !== 'none' && !isLoading && !loadError &&
-              <MatchupSection title="对位克制 · 胜率以所查英雄为视角" matchups={koreanMatchups.items} koreanView />}
+              <MatchupSection title={`对位克制 · ${koreanMatchups.metric==='lane'?'线杀率':'胜率'}以所查英雄为视角`} matchups={koreanMatchups.items} koreanView metric={koreanMatchups.metric} onSelect={koreanMatchups.onSelect} />}
           </>
         ) : (
           <>
@@ -570,9 +571,10 @@ function SpellSection({ title, builds, limit }: { title: string; builds?: OpggIt
   )
 }
 
-function MatchupSection({ title, matchups, koreanView }: { title: string; matchups?: OpggMatchup[]; koreanView?: boolean }) {
+function MatchupSection({ title, matchups, koreanView,metric='win',onSelect }: { title: string; matchups?: OpggMatchup[]; koreanView?: boolean;metric?:'win'|'lane';onSelect?:(id:number)=>void }) {
   const { t } = useI18n()
-  const items = matchups ?? []
+  const [matchupSearch,setMatchupSearch]=useState('')
+  const items = (matchups ?? []).filter(item=>matchesMatchupChampion(item.championId,matchupSearch)).filter(item=>metric!=='lane'||typeof item.laneKillRate==='number').map(item=>metric==='lane'?{...item,winRate:item.laneKillRate!}:item)
   const advantages = (koreanView ? items.filter((item) => item.winRate > 0.5) : [...items])
     .sort((a, b) => b.winRate - a.winRate || b.play - a.play)
     .slice(0, 9)
@@ -583,19 +585,19 @@ function MatchupSection({ title, matchups, koreanView }: { title: string; matchu
   const hasData = advantages.length > 0 || disadvantages.length > 0 || even.length > 0
 
   return (
-    <div className="sobp-matchup-wrap">
-      <Section title={title} empty={!hasData} emptyText={t('opgg.noMatchups')}>
+    <div className="sobp-matchup-wrap"><div className="sobp-matchup-search"><input type="search" aria-label="搜索克制英雄" placeholder="搜索英雄名称、称号、英文名或ID" value={matchupSearch} onChange={event=>setMatchupSearch(event.target.value)}/>{matchupSearch&&<button className="rh-button" type="button" onClick={()=>setMatchupSearch('')}>清除搜索</button>}<small>{items.length} 个对位</small></div>
+      <Section title={title} empty={!hasData} emptyText={matchupSearch?'没有匹配的克制英雄':t('opgg.noMatchups')}>
         <div className="sobp-matchup-columns">
-          <MatchupGroup title={koreanView ? '可反制该英雄' : t('opgg.matchup.advantage')} items={koreanView ? disadvantages : advantages} tone={koreanView ? 'bad' : 'good'} />
-          <MatchupGroup title={koreanView ? '该英雄表现占优' : t('opgg.matchup.disadvantage')} items={koreanView ? advantages : disadvantages} tone={koreanView ? 'good' : 'bad'} />
-          {even.length > 0 && <MatchupGroup title="均势对位" items={even} tone="neutral" />}
+          <MatchupGroup title={koreanView ? '可反制该英雄' : t('opgg.matchup.advantage')} items={koreanView ? disadvantages : advantages} onSelect={onSelect} metric={metric} tone={koreanView ? 'bad' : 'good'} />
+          <MatchupGroup title={koreanView ? '该英雄表现占优' : t('opgg.matchup.disadvantage')} items={koreanView ? advantages : disadvantages} onSelect={onSelect} metric={metric} tone={koreanView ? 'good' : 'bad'} />
+          {even.length > 0 && <MatchupGroup title="均势对位" items={even} onSelect={onSelect} metric={metric} tone="neutral" />}
         </div>
       </Section>
     </div>
   )
 }
 
-function MatchupGroup({ title, items, tone }: { title: string; items: OpggMatchup[]; tone: 'good' | 'bad' | 'neutral' }) {
+function MatchupGroup({ title, items, tone,metric,onSelect }: { title: string; items: OpggMatchup[]; tone: 'good' | 'bad' | 'neutral';metric?:'win'|'lane';onSelect?:(id:number)=>void }) {
   return (
     <div className="sobp-matchup-group">
       <div className={`sobp-matchup-heading sobp-matchup-heading--${tone}`}>{title}</div>
@@ -605,12 +607,12 @@ function MatchupGroup({ title, items, tone }: { title: string; items: OpggMatchu
           const championName = champion ? `${champion.title} ${champion.name}` : `英雄 ${item.championId}`
           return (
             <div className="sobp-matchup" key={`${tone}-${item.championId}`}>
-              <img className="sobp-matchup-icon" src={`/lol-game-data/assets/v1/champion-icons/${item.championId}.png`} alt="" />
+              <button type="button" className="sobp-matchup-avatar" disabled={!onSelect} aria-label={`查看${championName}对位详情`} onClick={()=>onSelect?.(item.championId)}><img className="sobp-matchup-icon" src={`/lol-game-data/assets/v1/champion-icons/${item.championId}.png`} alt="" /></button>
               <div className="sobp-matchup-info">
                 <span className="sobp-matchup-name" title={championName}>{championName}</span>
                 <span className="sobp-matchup-detail">
-                  <span className={`sobp-matchup-rate sobp-matchup-rate--${tone}`}>{formatPercent(item.winRate)}</span>
-                  <span className="sobp-matchup-play">{item.play.toLocaleString()}场</span>
+                  <span className={`sobp-matchup-rate sobp-matchup-rate--${tone}`}>{metric==='lane'?'线杀 ':''}{formatPercent(item.winRate)}</span>
+                  {metric!=='lane'&&<span className="sobp-matchup-play">{item.play.toLocaleString()}场</span>}
                 </span>
               </div>
             </div>

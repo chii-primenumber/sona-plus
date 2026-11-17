@@ -1,0 +1,7 @@
+.sona-update-push {position:fixed;right:20px;bottom:24px;z-index:27000;width:min(340px,calc(100vw - 40px));box-sizing:border-box;padding:16px;border:1px solid rgb(var(--sona-accent-rgb)/.65);border-radius:5px;background:rgb(var(--sona-base-rgb)/.97);box-shadow:0 6px 24px #0008;color:rgb(var(--sona-text-rgb));font:13px/1.6 'Microsoft YaHei UI',sans-serif}
+.sona-update-push strong {color:rgb(var(--sona-accent-rgb));font-size:14px;padding-right:20px}
+.sona-update-push p {margin:7px 0}.sona-update-push-preview {color:rgb(var(--sona-muted-rgb));overflow-wrap:anywhere}
+.sona-update-push > div {display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.sona-update-push button {cursor:pointer;color:rgb(var(--sona-accent-rgb));border:1px solid rgb(var(--sona-accent-rgb)/.5);background:rgb(var(--sona-raised-rgb)/.7);padding:5px 9px;font:inherit}
+.sona-update-push button:hover {background:rgb(var(--sona-accent-rgb)/.13)}
+.sona-update-push .sona-update-push-close {position:absolute;right:8px;top:5px;border:0;background:transparent;font-size:20px;padding:0 5px}
