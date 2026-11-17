@@ -1,0 +1,11 @@
+.sobp-sample-filters {display:flex;flex-wrap:wrap;gap:10px 18px;margin-bottom:14px}
+.sobp-sample-filter {display:flex;align-items:center;gap:8px;color:rgb(var(--sona-muted-rgb));font-size:11px;flex-wrap:wrap}
+.sobp-sample-filter .sona-segmented {height:28px}
+.sona-sample-presets {display:flex;flex-wrap:wrap;align-items:end;gap:12px}
+.sona-sample-presets label {display:flex;flex-direction:column;gap:6px;color:rgb(var(--sona-muted-rgb));font-size:12px}
+.sona-sample-presets input {width:100px;padding:6px 8px;background:rgb(var(--sona-base-rgb)/.6);border:1px solid rgb(var(--sona-accent-rgb)/.4);color:rgb(var(--sona-text-rgb));font:inherit}
+.sobp-sample-empty {color:rgb(var(--sona-muted-rgb));font-size:12px;margin:8px 0}
+
+.sobp-equipment-sort,.sobp-augment-filters {flex-wrap:wrap;row-gap:8px}
+.sobp-equipment-sort .sobp-sample-filter {margin-right:12px}
+.sobp-sample-filters:empty {display:none}

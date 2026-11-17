@@ -94,14 +94,14 @@ export function parseAramKitRecommendation(detail: AramKitDetail, resources: Ara
     return build(itemIds, { sampleCount:count,winRate:winRate??undefined,pickRate:pickRate??undefined }, baseline)
   })
   const coreItems = sortRecommendationBuilds(cores,'pick')
-  const augments = new Map<number, Array<{ id: number; pickRate: number; winRate?: number }>>()
+  const augments = new Map<number, Array<{ id: number; pickRate: number; sampleCount?: number; winRate?: number }>>()
   for (const row of detail.augments.all) {
     const resource = resources.augments[String(row.id)]
     const rarity = resource?.rarity === 'prismatic' ? 8 : resource?.rarity === 'gold' ? 4 : resource?.rarity === 'silver' ? 1 : 0
     if (!rarity || !resource) continue
     assets.augments[row.id] = { name: resource.name || String(row.id), iconPath: asset(resource.icon), description: description(resource), rarity: resource.rarity! }
     const list = augments.get(rarity) ?? []
-    list.push({ id: row.id, pickRate: rate(row.pickRate) ?? NaN, winRate: rate(row.winRate) ?? undefined }); augments.set(rarity, list)
+    list.push({ id: row.id, sampleCount: row.sampleCount, pickRate: rate(row.pickRate) ?? NaN, winRate: rate(row.winRate) ?? undefined }); augments.set(rarity, list)
   }
   const percent = (value: number | null) => value == null ? '—' : `${(value * 100).toFixed(1)}%`
   return {
@@ -124,6 +124,16 @@ export class AramKitDataApi {
       if (!response.ok) throw new Error(`ARAMKit 请求失败 (${response.status})。`)
       return response.json() as Promise<T>
     }, sharedSignal, 12000), { signal, ttlMs })
+  }
+  async getChampionTiers(signal?:AbortSignal):Promise<Map<number,{tier:number|null;winRate:number|null}>> {
+    const manifest=await this.read<{latest:string;versions:VersionRow[]}>('data/versions.json',signal,600000)
+    const version=manifest.versions.find(row=>row.version===manifest.latest)
+    if(!version||!/^data\/[\w.-]+$/.test(version.dataPath)||version.dataPath.includes('..'))throw new Error('ARAMKit 版本索引无效')
+    const data=await this.read<{rows:Array<{id:number;tier:string;winRate?:number}>}>(`${version.dataPath}/stats/all/champion-rankings.json`,signal,600000)
+    if(!Array.isArray(data.rows))throw new Error('ARAMKit 梯队数据无效')
+    const result=new Map<number,{tier:number|null;winRate:number|null}>()
+    for(const row of data.rows){const tier=({S:1,A:2,B:3,C:4,D:5} as Record<string,number>)[row.tier];if(Number.isInteger(row.id)&&row.id>0&&tier)result.set(row.id,{tier,winRate:rate(row.winRate)})}
+    return result
   }
   async getChampionRecommendation(championId: number, gameVersion: string, signal?: AbortSignal): Promise<BuildRecommendation> {
     const manifest = await this.read<{ latest: string; versions: VersionRow[] }>('data/versions.json', signal, 600000)

@@ -30,6 +30,11 @@ import type { OpggTier } from '@/lib/opgg-api'
 
 /** 所有配置项及其类型 */
 export interface SonaConfig {
+  automaticUpdateCheck: boolean
+  lastUpdateCheckAt: number
+  readAnnouncementVersion: string | null
+  releaseAnnouncement: import('./update-checker').UpdateInfo | null
+  recommendationPreferences: import('./recommendation-filter').RecommendationPreferences
   /** 战绩界面各区隐藏的字段。新增字段默认显示。 */
   historyHiddenFields: HistoryHiddenFields
   historyPerformanceFields: PerformanceSelection
@@ -267,6 +272,11 @@ const DEFAULT_CONFIG: SonaConfig = {
   hideSonaIcon: false,
   locale: 'auto',
   skippedUpdateVersion: null,
+  automaticUpdateCheck: true,
+  lastUpdateCheckAt: 0,
+  readAnnouncementVersion: null,
+  releaseAnnouncement: null,
+  recommendationPreferences: {presets:{items:[100,500,2000],runes:[100,500,2000],augments:[1000,5000,20000]},levels:{items:0,runes:0,augments:0},equipmentOrder:'pick',augmentOrder:'win'},
   windowEffect: 'none',
   champSelectAssist: false,
   teamHistoryOverview: true,

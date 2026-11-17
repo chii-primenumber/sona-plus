@@ -1,7 +1,7 @@
+import {showGameToolsWorkspace,closeGameToolsWorkspace} from './opgg-build-recommendation'
+import {createCustomLobbyEntry,findCustomLobbySpectate} from '@/lib/custom-lobby-entry'
 import { styleClientEntry } from '@/lib/client-entry-button'
-import { createElement } from 'react'
-import { createRoot, type Root } from 'react-dom/client'
-import { TeamHistoryModal, type TeamHistoryMode } from '@/components/ui/TeamHistoryModal'
+import { type TeamHistoryMode } from '@/components/ui/TeamHistoryModal'
 import { injector } from '@/lib/InjectorManager'
 import { lcu, LcuEventUri } from '@/lib/lcu'
 import type { GameflowPhase, Lobby } from '@/types/lcu'
@@ -11,8 +11,8 @@ const ATTR = 'data-sona-team-history'
 let mode: TeamHistoryMode | null = null
 let button: HTMLElement | null = null
 let gameContainer: Element | null = null
-let root: Root | null = null
-let host: HTMLDivElement | null = null
+let customEntry:ReturnType<typeof createCustomLobbyEntry>|null=null
+let isCustomLobby=false
 let unsub: (() => void) | null = null
 let subscriptionId = 0
 let phaseEvents = 0
@@ -21,6 +21,8 @@ let phase: GameflowPhase = 'None'
 let party = new Set<string>()
 
 function trackLobby(lobby: Lobby | null) {
+  const custom=Boolean(lobby?.gameConfig?.isCustom)
+  if(custom!==isCustomLobby){isCustomLobby=custom;changePhase(phase)}
   if (phase !== 'Lobby' && phase !== 'Matchmaking' && phase !== 'ReadyCheck') return
   if (!lobby && phase !== 'Lobby') return
   party = new Set(lobby?.gameConfig?.isCustom === false && Array.isArray(lobby.members)
@@ -28,25 +30,18 @@ function trackLobby(lobby: Lobby | null) {
     : [])
 }
 
-function destroyModal() {
-  root?.unmount(); root = null
-  host?.remove(); host = null
-}
-
-function showOverview() {
-  if (!mode) return
-  if (!host) {
-    host = document.createElement('div')
-    document.body.appendChild(host)
-    root = createRoot(host)
-  }
-  const currentMode = mode
-  const close = () => root?.render(createElement(TeamHistoryModal, { open: false, mode: currentMode, onClose: close }))
-  root?.render(createElement(TeamHistoryModal, { open: true, mode: currentMode, onClose: close, party }))
-}
+function destroyModal() {closeGameToolsWorkspace()}
+function showOverview() {if(mode)void showGameToolsWorkspace('history',mode,party)}
 
 function injectButton() {
   if (!mode) return false
+  if(mode==='lobby'){
+    const native=findCustomLobbySpectate()
+    if(customEntry?.button.isConnected&&native&&customEntry.button.previousElementSibling===native)return true
+    customEntry?.dispose();customEntry=null
+    if(!native)return false
+    customEntry=createCustomLobbyEntry(native,showOverview);return true
+  }
   const container = document.querySelector(mode === 'bp' ? '.bottom-right-buttons' : '.game-in-progress-container')
   if (!container) {
     button?.remove()
@@ -82,7 +77,7 @@ function injectButton() {
 }
 
 function changePhase(nextPhase: GameflowPhase) {
-  const next = nextPhase === 'ChampSelect' ? 'bp' : nextPhase === 'InProgress' || nextPhase === 'Reconnect' ? 'game' : null
+  const next = nextPhase === 'Lobby'&&isCustomLobby ? 'lobby' : nextPhase === 'ChampSelect' ? 'bp' : nextPhase === 'InProgress' || nextPhase === 'Reconnect' ? 'game' : null
   if (nextPhase === phase && next === mode) return
   phase = nextPhase
   if (phase === 'None' || phase === 'Lobby') party = new Set()
@@ -95,11 +90,12 @@ function changePhase(nextPhase: GameflowPhase) {
   }
   if (next === mode) return
   injector.unregister(injectButton)
+  customEntry?.dispose();customEntry=null
   button?.remove(); button = null
   syncInGameDetailsLayout(gameContainer); gameContainer = null
   destroyModal()
   mode = next
-  if (mode) injector.register(injectButton, { selector: '.bottom-right-buttons, .game-in-progress-container' })
+  if (mode) injector.register(injectButton, { selector: '.bottom-right-buttons, .game-in-progress-container, lol-uikit-flat-button, button' })
 }
 
 export function updateTeamHistoryOverview(enabled: boolean) {

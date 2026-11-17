@@ -38,7 +38,7 @@ export async function verifyRecommendationLifecycle(page) {
     await feature.showOpggBuildRecommendationModal()
   })
   const modal = page.locator('#sona-opgg-ingame-modal-root')
-  const close = page.locator('.sona-opgg-modal-content .sobp-close')
+  const close = page.getByRole('button',{name:'关闭对局工具',exact:true})
   try {
     await close.waitFor()
     await close.click()

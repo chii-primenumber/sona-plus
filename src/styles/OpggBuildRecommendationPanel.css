@@ -1099,3 +1099,27 @@
 .sobp-equipment-card .sobp-pick-rate, .sobp-equipment-card .sobp-win-rate { width: auto; justify-content: flex-start; gap: 4px; }
 
 .sobp-compact-equipment .sobp-section-card { padding: 0; border: 0; background: transparent; }
+
+/* Wide headers keep the summary on the right, level with the champion name. */
+.sobp-titlebar {grid-template-columns:minmax(0,1fr) auto auto 32px}
+.sobp-title-main {grid-column:1;grid-row:1}
+.sobp-title-actions {grid-column:3;grid-row:1}
+.sobp-title-actions:empty {display:none}
+.sobp-titlebar > .sobp-close {grid-column:4;grid-row:1}
+.sobp-titlebar > .sobp-overview {grid-column:2;grid-row:1;align-self:start;justify-self:end;padding-top:5px;flex-wrap:nowrap}
+.sobp-overview .sobp-meta {min-width:0}
+.sobp-titlebar--shared {grid-template-columns:minmax(0,1fr) auto auto}
+@container (max-width:900px) {
+ .sobp-titlebar {grid-template-columns:minmax(0,1fr) auto 32px}
+ .sobp-titlebar--shared {grid-template-columns:minmax(0,1fr) auto}
+ .sobp-title-actions {grid-column:1/-1;grid-row:2;justify-self:end}
+ .sobp-titlebar > .sobp-close {grid-column:3}
+}
+@container (max-width:600px) {
+ .sobp-titlebar {grid-template-columns:minmax(0,1fr) 32px}
+ .sobp-titlebar--shared {grid-template-columns:minmax(0,1fr)}
+ .sobp-titlebar > .sobp-close {grid-column:2}
+ .sobp-titlebar > .sobp-overview {grid-column:1/-1;grid-row:2;padding-top:0;flex-wrap:wrap;max-width:100%}
+ .sobp-title-actions {grid-row:3;max-width:100%;flex-wrap:wrap}
+ .sobp-overview .sobp-summary {flex-wrap:wrap}
+}

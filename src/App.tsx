@@ -14,7 +14,7 @@ import { UpdatePage } from '@/components/pages/UpdatePage'
 import { HomeIcon, GamepadIcon, PaletteIcon, SettingsIcon, InfoIcon, BugIcon, ZapIcon, GiftIcon } from '@/components/ui/icons'
 import { onModalVisibilityChange, isModalVisible, closeModal } from '@/lib/modal'
 import { store } from '@/lib/store'
-import { getUpdateState, onUpdateStateChange, type UpdateState } from '@/lib/update-checker'
+import { checkUpdatesInBackground, getUpdateState, onUpdateStateChange, type UpdateState } from '@/lib/update-checker'
 import { useI18n } from '@/i18n'
 import type { TranslationKey } from '@/i18n'
 
@@ -71,6 +71,7 @@ export function App() {
       const rootConnected = Boolean(document.getElementById('sona-root')?.isConnected)
       logger.debug('Modal visibility changed: %s (root in DOM: %s)', String(v), String(rootConnected))
       setVisible(v)
+      if(v)checkUpdatesInBackground()
       if (v && getUpdateState().status === 'available') {
         setActivePageId('update')
       }
@@ -91,9 +92,7 @@ export function App() {
   useEffect(() => {
     return onUpdateStateChange((state) => {
       setUpdateState(state)
-      if (state.status !== 'available' && activePageId === 'update') {
-        setActivePageId('home')
-      }
+
     })
   }, [activePageId])
 
@@ -105,9 +104,7 @@ export function App() {
       label: t(item.labelKey),
     })
     const baseItems = baseSidebarItemConfigs.map(makeItem)
-    const items = updateState.status === 'available'
-      ? [makeItem(updateSidebarItemConfig), ...baseItems]
-      : baseItems
+    const items = [makeItem({...updateSidebarItemConfig,labelKey:updateState.status === 'available'?'nav.updateAvailable':'nav.updates'}),...baseItems]
     return devMode ? [...items, makeItem(debugSidebarItemConfig)] : items
   }, [devMode, t, updateState.status])
 

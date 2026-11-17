@@ -2,7 +2,7 @@
  * 英雄选择网格 T 级角标
  *
  * 在客户端英雄选择网格的 .champion-grid-champion-thumbnail 左上角展示全英雄梯度：
- * 常规模式使用 OP.GG，海克斯大乱斗（KIWI）使用 ARAM.GG 的专属 T1-T5 数据。
+ * 常规模式使用 OP.GG，海克斯大乱斗（KIWI）使用 ARAMKit S/A/B/C/D 映射的 T1-T5 数据。
  * 跟随“英雄选择阶段增强”开关启用。
  */
 
@@ -10,7 +10,7 @@ import { logger } from '@/index'
 import { injector } from '@/lib/InjectorManager'
 import { getQueue } from '@/lib/assets'
 import { lcu, LcuEventUri, type ChampSelectSession, type LCUEventMessage } from '@/lib/lcu'
-import { aramggApi, type AramggChampionsStats } from '@/lib/aramgg-api'
+import { aramkitApi } from '@/lib/aramkit-api'
 import { opggApi, type OpggChampionsTier, type OpggMode, type OpggRankedDataItem, type OpggTier } from '@/lib/opgg-api'
 import { store } from '@/lib/store'
 import type { GameflowPhase } from '@/types/lcu'
@@ -168,24 +168,6 @@ function buildTierMap(data: OpggChampionsTier, mode: OpggMode): Map<number, Cham
   return result
 }
 
-function buildAramggTierMap(data: AramggChampionsStats): Map<number, ChampionTierStats> {
-  const result = new Map<number, ChampionTierStats>()
-
-  for (const champion of data) {
-    const championId = Number(champion.championId)
-    const tier = Number(champion.tier)
-    const winRate = champion.winRate
-    if (!Number.isFinite(championId) || championId <= 0) continue
-
-    const stats: ChampionTierStats = {
-      tier: Number.isFinite(tier) && tier >= 1 && tier <= 5 ? tier : null,
-      winRate: toValidWinRate(winRate),
-    }
-    if (stats.tier != null || stats.winRate != null) result.set(championId, stats)
-  }
-
-  return result
-}
 
 function ensureTierMap(mode: TierDataMode, tier = getEffectiveTier(mode)): Promise<Map<number, ChampionTierStats>> {
   const cacheKey = getTierCacheKey(mode, tier)
@@ -194,9 +176,9 @@ function ensureTierMap(mode: TierDataMode, tier = getEffectiveTier(mode)): Promi
   if (cached?.promise) return cached.promise
 
   const entry: TierCacheEntry = {}
-  const source = mode === 'kiwi' ? 'ARAM.GG' : 'OP.GG'
+  const source = mode === 'kiwi' ? 'ARAMKit' : 'OP.GG'
   entry.promise = (mode === 'kiwi'
-    ? aramggApi.getChampionsStats().then(buildAramggTierMap)
+    ? aramkitApi.getChampionTiers()
     : opggApi.getChampionsTier({ region: 'global', mode, tier }).then((data) => buildTierMap(data, mode)))
     .then((tierMap) => {
       entry.data = tierMap
@@ -231,12 +213,12 @@ async function resolveCurrentContext(session?: ChampSelectSession): Promise<{ mo
   const queueMode = queueId > 0 ? getQueue(queueId)?.gameMode : ''
 
   if (queueMode) {
-    return { mode: resolveTierDataMode(queueMode), gameMode: queueMode, queueId }
+    return { mode: queueId===2400?'kiwi':resolveTierDataMode(queueMode), gameMode: queueMode, queueId }
   }
 
   const gameflow = await lcu.getGameflowSession().catch(() => null)
   const gameMode = gameflow?.gameData?.queue?.gameMode || gameflow?.map?.gameMode || ''
-  return { mode: resolveTierDataMode(gameMode), gameMode, queueId: queueId || gameflow?.gameData?.queue?.id || 0 }
+  return { mode: (queueId||gameflow?.gameData?.queue?.id)===2400?'kiwi':resolveTierDataMode(gameMode), gameMode, queueId: queueId || gameflow?.gameData?.queue?.id || 0 }
 }
 
 async function loadTierData(session?: ChampSelectSession) {

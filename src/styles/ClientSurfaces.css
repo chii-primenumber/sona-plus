@@ -68,3 +68,5 @@
 .rh-column-sort { display: inline-flex; align-items: center; gap: 5px; padding: 2px 0; border: 0; background: transparent; color: inherit; font: inherit; font-weight: inherit; cursor: pointer; }
 .rh-column-sort:hover, th[aria-sort="ascending"] .rh-column-sort, th[aria-sort="descending"] .rh-column-sort { color: rgb(var(--sona-accent-rgb)); }
 .rh-column-sort:focus-visible { outline: 1px solid rgb(var(--sona-accent-rgb)); outline-offset: 3px; }
+
+.sobp .sobp-overview .sobp-summary-card { background: transparent; box-shadow: none; }

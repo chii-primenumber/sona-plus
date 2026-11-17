@@ -1,11 +1,10 @@
+import { store } from '@/lib/store'
 import { useEffect, useState } from 'react'
 import { SonaButton } from '@/components/ui/SonaButton'
-import { checkForUpdates, getReleasePageUrl, getUpdateState, onUpdateStateChange, skipUpdateVersion, type UpdateState } from '@/lib/update-checker'
+import { checkForUpdates, getReleaseAnnouncement, getReleasePageUrl, getUpdateState, onUpdateStateChange, skipUpdateVersion, type UpdateState } from '@/lib/update-checker'
 import { useI18n } from '@/i18n'
 import '@/styles/UpdatePage.css'
 
-const GROUP_FILE_URL = ''
-const QUARK_URL = ''
 
 function formatPublishedDate(value: string): string {
   const date = new Date(value)
@@ -20,7 +19,8 @@ function formatPublishedDate(value: string): string {
 export function UpdatePage() {
   const { t } = useI18n()
   const [updateState, setUpdateState] = useState<UpdateState>(() => getUpdateState())
-  const info = updateState.info
+  const info = updateState.info ?? getReleaseAnnouncement()
+  useEffect(()=>{if(info)store.set('readAnnouncementVersion',info.latestVersion)},[info?.latestVersion])
 
   useEffect(() => onUpdateStateChange(setUpdateState), [])
 
@@ -32,7 +32,7 @@ export function UpdatePage() {
   return (
     <div className="sona-update-page">
       <h2 className="sona-update-title">
-        {info ? (
+        {info && updateState.status==='available' ? (
           <>
             {t('update.titleWithVersion')}
             <span className="sona-update-title-version">{info.currentVersion}</span>
@@ -40,7 +40,7 @@ export function UpdatePage() {
             <span className="sona-update-title-version sona-update-title-version--latest">{info.latestVersion}</span>
           </>
         ) : (
-          t('update.title')
+          '更新与公告'
         )}
       </h2>
 
@@ -48,12 +48,13 @@ export function UpdatePage() {
         <>
           <div className="sona-update-release">
             <div className="sona-update-release-head">
-              <span>{info.releaseName}</span>
+              <span>{info.releaseName}{updateState.status==='available'?' · 新版本':''}</span>
               {info.publishedAt && <time dateTime={info.publishedAt}>{formatPublishedDate(info.publishedAt)}</time>}
             </div>
             <pre className="sona-update-notes">{info.releaseBody}</pre>
           </div>
 
+          {updateState.status==='error'&&<p role="alert">更新检查失败，当前显示已缓存公告。</p>}
           <div className="sona-update-download">
             <h3>{t('update.downloadTitle')}</h3>
             <p>{t('update.downloadDescription')}</p>
@@ -61,15 +62,11 @@ export function UpdatePage() {
               <SonaButton variant="primary" onClick={() => openUrl(info.releaseUrl || getReleasePageUrl())}>
                 {t('update.openRelease')}
               </SonaButton>
-              <SonaButton onClick={() => openUrl(GROUP_FILE_URL)} disabled={!GROUP_FILE_URL}>
-                {t('update.groupFile')}
-              </SonaButton>
-              <SonaButton onClick={() => openUrl(QUARK_URL)} disabled={!QUARK_URL}>
-                {t('update.quark')}
-              </SonaButton>
-              <SonaButton onClick={() => skipUpdateVersion(info.latestVersion)}>
+
+              {updateState.status==='available'&&<SonaButton onClick={() => skipUpdateVersion(info.latestVersion)}>
                 {t('update.skipVersion', { version: info.latestVersion })}
-              </SonaButton>
+              </SonaButton>}
+              <SonaButton disabled={updateState.status==='checking'} onClick={()=>{void checkForUpdates()}}>检查更新</SonaButton>
             </div>
           </div>
         </>

@@ -101,20 +101,28 @@ function isPlusRelease(release: GithubReleaseResponse): boolean {
 async function fetchLatestRelease(): Promise<GithubReleaseResponse> {
   const errors: string[] = []
   const candidates: Array<{ url: string; kind: 'single' | 'array' }> = [
+    { url: GITHUB_API_LATEST, kind: 'single' },
     { url: wrapCorsProxy(GITHUB_API_LATEST), kind: 'single' },
     { url: wrapCorsProxy(GITHUB_API_RELEASES), kind: 'array' },
   ]
 
   for (const { url, kind } of candidates) {
     try {
-      const response = await fetch(url, {
+      const controller = new AbortController()
+      const timer = setTimeout(()=>controller.abort(),8000)
+      let response: Response
+      let text: string
+      try {
+      response = await fetch(url, {
+        signal: controller.signal,
         method: 'GET',
         mode: 'cors',
         headers: {
           Accept: 'application/vnd.github+json',
         },
       })
-      const text = await response.text()
+      text = await response.text()
+      } finally { clearTimeout(timer) }
 
       if (!response.ok) {
         errors.push(`${url} -> ${response.status} ${response.statusText}`)
@@ -153,6 +161,14 @@ export function checkForUpdates(): Promise<UpdateState> {
     .then((release) => {
       const currentVersion = normalizeVersion(__PLUGIN_VERSION__)
       const latestVersion = normalizeVersion(release.tag_name ?? '')
+      const announcement: UpdateInfo = {
+        currentVersion, latestVersion,
+        releaseName: release.name || `Sona Plus v${latestVersion}`,
+        releaseUrl: release.html_url?.startsWith(`${RELEASE_PAGE_URL}/tag/`) ? release.html_url : RELEASE_PAGE_URL,
+        releaseBody: release.body || '该版本没有填写更新说明。', publishedAt: release.published_at || '',
+      }
+      store.set('releaseAnnouncement',announcement)
+      store.set('lastUpdateCheckAt',Date.now())
       const skippedVersion = getSkippedUpdateVersion()
       if (skippedVersion && compareVersion(currentVersion, skippedVersion) >= 0) {
         store.set('skippedUpdateVersion', null)
@@ -174,14 +190,7 @@ export function checkForUpdates(): Promise<UpdateState> {
       const next: UpdateState = {
         status: 'available',
         error: '',
-        info: {
-          currentVersion,
-          latestVersion,
-          releaseName: release.name || `Sona Plus v${latestVersion}`,
-          releaseUrl: release.html_url || RELEASE_PAGE_URL,
-          releaseBody: release.body || '该版本没有填写更新说明。',
-          publishedAt: release.published_at || '',
-        },
+        info: announcement,
       }
       setState(next)
       logger.info('[Update] 检测到新版本: %s -> %s', currentVersion, latestVersion)
@@ -225,7 +234,7 @@ export function clearSkippedUpdateVersion() {
 }
 
 function notifyUpdateAvailable(currentVersion: string, latestVersion: string) {
-  if (notifiedVersion === latestVersion) return
+  if (notifiedVersion === latestVersion || store.get('readAnnouncementVersion') === latestVersion) return
   notifiedVersion = latestVersion
 
   void lcu.sendNotification(
@@ -235,4 +244,29 @@ function notifyUpdateAvailable(currentVersion: string, latestVersion: string) {
     notifiedVersion = ''
     logger.warn('[Update] 发送更新通知失败:', err)
   })
+}
+
+export function getReleaseAnnouncement(): UpdateInfo | null {
+  const value=store.get('releaseAnnouncement')
+  if (!value || typeof value.latestVersion!=='string' || typeof value.releaseBody!=='string' || typeof value.releaseName!=='string' || typeof value.releaseUrl!=='string') return null
+  return {...value,currentVersion:__PLUGIN_VERSION__}
+}
+let backgroundInitialized=false
+let lastAttempt=0
+export function checkUpdatesInBackground() {
+  if (!store.get('automaticUpdateCheck') || document.hidden || Date.now()-lastAttempt<10*60*1000) return
+  const lastSuccess=store.get('lastUpdateCheckAt')
+  if (Number.isFinite(lastSuccess) && Date.now()-lastSuccess<6*60*60*1000) return
+  lastAttempt=Date.now()
+  void checkForUpdates()
+}
+/** Startup delay plus visible-page refresh; no polling and no automatic installation. */
+export function initUpdateAnnouncements() {
+  if (backgroundInitialized) return
+  backgroundInitialized=true
+  const timer=window.setTimeout(checkUpdatesInBackground,15000)
+  const visible=()=>{if(!document.hidden)checkUpdatesInBackground()}
+  document.addEventListener('visibilitychange',visible)
+  const stop=store.onChange('automaticUpdateCheck',enabled=>{if(enabled)checkUpdatesInBackground()})
+  return ()=>{window.clearTimeout(timer);stop();document.removeEventListener('visibilitychange',visible);backgroundInitialized=false}
 }

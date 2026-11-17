@@ -1,3 +1,5 @@
+import {deadline} from '@/lib/history-api'
+import {setGameToolsNavigation} from '@/lib/game-tools-navigation'
 import { styleClientEntry } from '@/lib/client-entry-button'
 /**
  * OP.GG 配装推荐基础框架
@@ -14,6 +16,8 @@ import { createElement } from 'react'
 import { flushSync } from 'react-dom'
 import { createRoot, type Root } from 'react-dom/client'
 import { Modal } from '@/components/ui/Modal'
+import {GameToolsWorkspace} from '@/components/ui/GameToolsWorkspace'
+import type {TeamHistoryMode} from '@/components/ui/TeamHistoryModal'
 import { getAllChampions, getAugmentInfo, getChampionById, getItemInfo, getItemPrice, getQueue, getQueueName } from '@/lib/assets'
 import { OpggBuildRecommendationPanel, type BuildRecommendation, type RecommendationContext } from '@/components/ui/OpggBuildRecommendationPanel'
 import { lcu, LcuEventUri, type ChampSelectSession, type ItemSet, type ItemSetBlock, type LCUEventMessage, type RunePage, type RunePagePayload } from '@/lib/lcu'
@@ -39,6 +43,13 @@ import { SharedRequests } from '@/lib/shared-requests'
 
 const TARGET_SELECTOR = '.toggle-ability-previews-button'
 const HIJACK_ATTR = 'data-sona-opgg-build-hijacked'
+let workspaceView:'history'|'build'='build'
+let workspaceMode:TeamHistoryMode='game'
+let workspaceRequest=0
+let workspaceParty:ReadonlySet<string>=new Set()
+let workspaceBuildLoading=false,workspaceBuildReady=false
+let workspaceBuildError=''
+
 const PANEL_ID = 'sona-opgg-build-panel'
 const IN_GAME_BUILD_BUTTON_ATTR = 'data-sona-opgg-ingame-build'
 const PRESELECT_BUILD_BUTTON_ATTR = 'data-sona-opgg-preselect-build'
@@ -1500,6 +1511,7 @@ function mapOpggAugments(augmentGroups: OpggAugmentGroup[]): BuildRecommendation
       items: group.augments.map((augment) => ({
         id: augment.id,
         pickRate: augment.pick_rate,
+        sampleCount: augment.play,
         winRate: Number.isFinite(augment.win) && augment.play > 0 && augment.win >= 0 && augment.win <= augment.play
           ? augment.win / augment.play : undefined,
         averagePlace: augment.total_place / Math.max(augment.play, 1),
@@ -1658,8 +1670,8 @@ function renderInGameBuildRecommendationModal(
   }
 
   const recommendation = cacheEntry?.data ?? null
-  const loadError = cacheEntry?.error ?? ''
-  const isLoading = Boolean(cacheEntry && cacheEntry.data === undefined && !cacheEntry.error)
+  const loadError = workspaceBuildError || cacheEntry?.error || ''
+  const isLoading = workspaceBuildLoading || Boolean(cacheEntry && cacheEntry.data === undefined && !cacheEntry.error)
   const close = () => closeInGameBuildRecommendationModal()
   const handleTierChange = (tier: OpggTier) => {
     const nextTier = normalizeOpggTier(tier)
@@ -1685,10 +1697,12 @@ function renderInGameBuildRecommendationModal(
     createElement(Modal, {
       open: true,
       onClose: close,
-      width: 1120,
-      height: 700,
+      width: 'min(1550px, 95vw)',
+      height: 'min(900px, 92vh)',
+      careerBackground: true,
       closable: false,
-      children: createElement('div', { className: 'sona-opgg-modal-content' },
+      children: createElement(GameToolsWorkspace, {initialView:workspaceView,request:workspaceRequest,mode:workspaceMode,party:workspaceParty,onClose:close,onBuildRequested:()=>{void loadWorkspaceBuild()},children:
+
         createElement(OpggBuildRecommendationPanel, {
           context,
           recommendation,
@@ -1698,8 +1712,9 @@ function renderInGameBuildRecommendationModal(
           onTierChange: handleTierChange,
           onPositionChange: handlePositionChange,
           onClose: close,
+          hideClose: true,
         }),
-      ),
+      }),
     }),
   )
 
@@ -1759,13 +1774,33 @@ async function resolveInGameRecommendationContext(): Promise<RecommendationConte
   }
 }
 
+async function loadWorkspaceBuild() {
+  if(workspaceBuildReady||!inGameModalRoot) return
+  const token=++inGameModalRenderToken
+  workspaceBuildLoading=true;workspaceBuildError=''
+  renderInGameBuildRecommendationModal(currentContext,null,token)
+  try {
+    if(workspaceMode==='lobby')throw new Error('自定义房间尚未选定英雄，进入英雄选择后可查看配装推荐。')
+    const context=workspaceMode==='bp'&&currentContext.championId>0 ? {...currentContext} : await deadline(()=>resolveInGameRecommendationContext(),undefined,10000)
+    if(token!==inGameModalRenderToken||!inGameModalRoot)return
+    currentContext={...context};workspaceBuildLoading=false;workspaceBuildReady=true
+    renderInGameBuildRecommendationModal(context,ensureRecommendationPrefetch(context),token)
+  }catch(error){
+    if(token!==inGameModalRenderToken||!inGameModalRoot)return
+    workspaceBuildLoading=false;workspaceBuildError=error instanceof Error?error.message:'配装推荐加载失败'
+    renderInGameBuildRecommendationModal(currentContext,null,token)
+  }
+}
+export function closeGameToolsWorkspace() {cleanupInGameBuildRecommendationModal()}
+export async function showGameToolsWorkspace(view:'history'|'build',mode:TeamHistoryMode='game',party:ReadonlySet<string>=new Set()) {
+  workspaceView=view;workspaceMode=mode;workspaceParty=party;workspaceRequest++
+  workspaceBuildReady=false;workspaceBuildLoading=false;workspaceBuildError=''
+  const token=++inGameModalRenderToken
+  renderInGameBuildRecommendationModal(currentContext,null,token)
+  if(view==='build')await loadWorkspaceBuild()
+}
 export async function showOpggBuildRecommendationModal() {
-  const token = ++inGameModalRenderToken
-  const context = await resolveInGameRecommendationContext()
-  if (token !== inGameModalRenderToken) return
-  currentContext = { ...context }
-  const cacheEntry = ensureRecommendationPrefetch(context)
-  renderInGameBuildRecommendationModal(context, cacheEntry, token)
+  await showGameToolsWorkspace('build','game')
 }
 
 async function openRecommendationPanel(anchor: HTMLElement, contextOverride?: RecommendationContext) {
@@ -1948,6 +1983,7 @@ function renderRecommendationPanel(
       onTierChange,
       onPositionChange,
       onClose: closePanel,
+      onSwitchToHistory:()=>{closePanel();void showGameToolsWorkspace('history','bp')},
     }))
   })
 }
@@ -2213,3 +2249,5 @@ export function updateOpggBuildRecommendation(enabled: boolean) {
     logger.info('[OPGG] 配装推荐接管已禁用')
   }
 }
+
+setGameToolsNavigation((view,mode)=>{void showGameToolsWorkspace(view,mode)})

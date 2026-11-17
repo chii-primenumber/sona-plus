@@ -1,6 +1,7 @@
+import {openGameTools} from '@/lib/game-tools-navigation'
 import { HistorySelect } from './HistorySelect'
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import { Modal } from './Modal'
+import { Modal, type ModalProps } from './Modal'
 import { PlayerHistoryModal } from './PlayerHistoryModal'
 import { ChampionStrip, HistoryImage, MatchReport, championName } from './HistoryWidgets'
 import { HistoryDisplaySettings } from './HistoryDisplaySettings'
@@ -22,10 +23,10 @@ import { usePlayerScoreSystem } from '@/lib/use-player-score'
 import { useHistoryPages } from '@/lib/use-history-pages'
 import { useHistoryHiddenFields } from '@/lib/use-history-display'
 import { isHistoryFieldVisible, type HistoryDisplayField, type HistoryHiddenFields } from '@/lib/history-display'
-import type { ChampSelectSession, GameflowSession, SummonerInfo } from '@/types/lcu'
+import type { ChampSelectSession, GameflowSession, SummonerInfo, Lobby } from '@/types/lcu'
 import '@/styles/PersonalHistory.css'
 
-export type TeamHistoryMode = 'bp' | 'game'
+export type TeamHistoryMode = 'bp' | 'game' | 'lobby'
 interface Member { key: string; puuid: string; name: string; championId: number; position: string; premade?: number; self?: boolean }
 interface Team { id: string; label: string; members: Member[] }
 interface Snapshot { queueId: number; queueName: string; teams: Team[] }
@@ -72,8 +73,36 @@ function gameSnapshot(session: GameflowSession): Snapshot {
   return { queueId: data.queue?.id || 0, queueName: data.queue?.name || getQueueName(data.queue?.id || 0), teams }
 }
 
-export function TeamHistoryModal({ open, onClose, mode, party = emptyParty }: {
-  open: boolean; onClose: () => void; mode: TeamHistoryMode; party?: ReadonlySet<string>
+function HistoryFrame({embedded,...props}:ModalProps&{embedded?:boolean}) { return embedded ? <>{props.children}</> : <Modal {...props}/> }
+
+async function lobbySnapshot(lobby: Lobby, signal:AbortSignal): Promise<Snapshot> {
+  const config=lobby.gameConfig
+  if (!config?.isCustom) throw new Error('当前不是自定义房间')
+  const members=lobby.members??[]
+  const seen=new Set<string>()
+  const teams=await Promise.all([100,200].map(async (teamId)=>{
+    const raw=config[teamId===100?'customTeam100':'customTeam200']
+    const entries=Array.isArray(raw)&&raw.length ? raw : members.filter(member=>member.teamId===teamId)
+    const players=await Promise.all(entries.map(async (entry,index)=>{
+      const row=(entry&&typeof entry==='object'?entry:{summonerId:entry}) as Partial<import('@/types/lcu').LobbyMember>
+      const member={...members.find(member=>(row.puuid&&member.puuid===row.puuid)||(row.summonerId&&member.summonerId===row.summonerId)),...row}
+      if(member.isBot||member.isSpectator) return null
+      let puuid=member.puuid||'',name=member.summonerName||member.summonerInternalName||''
+      if(!puuid&&member.summonerId) {
+        const summoner=await deadline(()=>lcu.getSummonerById(member.summonerId!),signal,8000).catch(()=>null)
+        puuid=summoner?.puuid||'';name=summoner?.gameName?`${summoner.gameName}#${summoner.tagLine}`:name
+      }
+      if(signal.aborted||!puuid) return null
+      return {key:puuid,puuid,name:name||`玩家 ${index+1}`,championId:0,position:''} as Member
+    }))
+    return {id:teamId===100?'blue':'red',label:teamId===100?'蓝色方':'红色方',members:players.filter((p):p is Member=>p!==null)}
+  }))
+  for(const team of teams)team.members=team.members.filter(member=>{if(seen.has(member.puuid))return false;seen.add(member.puuid);return true})
+  return {queueId:config.queueId||0,queueName:getQueueName(config.queueId||0),teams}
+}
+
+export function TeamHistoryModal({ open, onClose, mode, party = emptyParty, embedded=false }: {
+  open: boolean; onClose: () => void; mode: TeamHistoryMode; party?: ReadonlySet<string>; embedded?:boolean
 }) {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null)
   const [error, setError] = useState('')
@@ -108,7 +137,9 @@ export function TeamHistoryModal({ open, onClose, mode, party = emptyParty }: {
       latestChampSelect = session
       if (session.queueId > 0 || queueLoaded) update(bpSnapshot(session, party, fallbackQueueId))
     }
-    const unsubscribe = mode === 'bp' ? lcu.observe(LcuEventUri.CHAMP_SELECT, (event) => {
+    let lobbyVersion=0
+    const updateLobby=(lobby:Lobby)=>{const version=++lobbyVersion;return lobbySnapshot(lobby,controller.signal).then(next=>{if(version===lobbyVersion)update(next)})}
+    const unsubscribe = mode === 'lobby' ? lcu.observe(LcuEventUri.LOBBY,event=>{receivedEvent=true;if(event.eventType==='Delete'){lobbyVersion++;setSnapshot(null);setError('已离开自定义房间');return}void updateLobby(event.data as Lobby).catch(()=>{})}) : mode === 'bp' ? lcu.observe(LcuEventUri.CHAMP_SELECT, (event) => {
       const data = event.data as ChampSelectSession | null
       if (Array.isArray(data?.myTeam)) { receivedEvent = true; updateChampSelect(data) }
     }) : undefined
@@ -118,7 +149,7 @@ export function TeamHistoryModal({ open, onClose, mode, party = emptyParty }: {
       queueLoaded = true
       if (latestChampSelect) updateChampSelect(latestChampSelect)
     })
-    const query = mode === 'bp'
+    const query = mode === 'lobby' ? deadline(()=>lcu.getLobby(),controller.signal,10000).then(lobby=>{if(!receivedEvent&&lobby)return updateLobby(lobby)}) : mode === 'bp'
       ? deadline(() => lcu.getChampSelectSession(), controller.signal, 10000).then((session) => { if (!receivedEvent) updateChampSelect(session) })
       : deadline(() => lcu.getGameflowSession(), controller.signal, 10000).then((session) => update(gameSnapshot(session)))
     void query.catch(() => { if (!controller.signal.aborted && !receivedEvent) setError('暂时读不到当前对局，请确认处于对应阶段后重试。') })
@@ -131,11 +162,12 @@ export function TeamHistoryModal({ open, onClose, mode, party = emptyParty }: {
   }
   const playerCount = snapshot?.teams.reduce((total, team) => total + team.members.length, 0) ?? 0
   return <>
-    <Modal open={open} onClose={onClose} careerBackground width="min(1550px, 95vw)" height={mode === 'bp' ? 'min(560px, 92vh)' : 'min(900px, 92vh)'}>
+    <HistoryFrame embedded={embedded} open={open} onClose={onClose} careerBackground width="min(1550px, 95vw)" height={mode === 'bp' ? 'min(560px, 92vh)' : 'min(900px, 92vh)'}>
       <div className="rh-shell rh-team-shell" data-testid={mode === 'bp' ? 'bp-history' : 'game-history'}>
         <header className="rh-header rh-team-heading">
-          <h2>对局详情</h2>
+          <h2>{mode==='lobby'?'战绩总览':'对局详情'}</h2>
           <div className="rh-team-controls">
+            {!embedded&&<button type="button" className="rh-button" onClick={()=>{onClose();openGameTools('build',mode)}}>配装推荐</button>}
             <HistorySelect className="rh-team-mode" aria-label="队伍战绩范围" value={queueId} onChangeValue={(value) => setSelectedQueue(Number(value))}>
               <option value={0}>全部模式</option>
               {queues.map((queue) => <option key={queue.id} value={queue.id}>{queue.name}</option>)}
@@ -162,7 +194,7 @@ export function TeamHistoryModal({ open, onClose, mode, party = emptyParty }: {
         </div>
         <HistoryScrollTop targets={scrollTargets} resetKey={`${open}:${mode}:${revision}`} />
       </div>
-    </Modal>
+    </HistoryFrame>
     <HistoryDisplaySettings open={open && showSettings} onClose={() => setShowSettings(false)} initialSection="team" />
     <Modal open={Boolean(open && selectedMatch)} onClose={() => setSelectedMatch(null)} careerBackground width="min(1200px, 95vw)" height="min(720px, 88vh)">
       {selectedMatch && (

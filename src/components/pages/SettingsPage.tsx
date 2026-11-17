@@ -1,3 +1,4 @@
+import { RecommendationSettings } from '@/components/ui/RecommendationControls'
 import { useState, useEffect } from 'react'
 import { SettingCard, SettingGroup } from '@/components/ui/SettingCard'
 import { SonaSwitch } from '@/components/ui/SonaSwitch'
@@ -18,6 +19,7 @@ const hotkeyOptions = [
 
 export function SettingsPage() {
   const { localeSetting, setLocaleSetting, t } = useI18n()
+  const [automaticUpdates,setAutomaticUpdates]=useState(store.get('automaticUpdateCheck'))
   const [developerMode, setDeveloperMode] = useState(store.get('developerMode'))
   const [hotkey, setHotkey] = useState(store.get('hotkey'))
   const [hideSonaIcon, setHideSonaIcon] = useState(store.get('hideSonaIcon'))
@@ -32,6 +34,7 @@ export function SettingsPage() {
 
   useEffect(() => {
     const unsubs = [
+      store.onChange('automaticUpdateCheck',setAutomaticUpdates),
       store.onChange('developerMode', setDeveloperMode),
       store.onChange('hotkey', setHotkey),
       store.onChange('hideSonaIcon', setHideSonaIcon),
@@ -88,6 +91,7 @@ export function SettingsPage() {
             onChange={(v) => { setGlobalParticle(v); store.set('globalParticle', v) }}
           />
         </SettingCard>
+        <SettingCard title="自动检查更新" description="启动后及重新打开面板时按需检查，成功检查间隔六小时。"><SonaSwitch checked={automaticUpdates} onChange={value=>store.set('automaticUpdateCheck',value)}/></SettingCard>
         {skippedUpdateVersion && (
           <SettingCard
             title={t('settings.skippedUpdate.title', { version: skippedUpdateVersion })}
@@ -104,6 +108,7 @@ export function SettingsPage() {
       </SettingGroup>
 
 
+      <RecommendationSettings />
       <SettingGroup title={t('settings.group.advanced')}>
         <SettingCard
           title={t('settings.developerMode.title')}

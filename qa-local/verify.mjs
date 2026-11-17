@@ -1,3 +1,5 @@
+import { verifyRoomWorkspace } from './verify-room-workspace.mjs'
+import { verifyNextVersion } from './verify-next-version.mjs'
 import { verifyScrollVisibility } from './verify-scroll-visibility.mjs'
 import { verifyBrand } from './verify-brand.mjs'
 import { selectOption } from './select-option.mjs'
@@ -271,6 +273,8 @@ try {
   await page.goto(`${origin}/qa-local/index.html`)
   await verifyBrand(page,out)
   await verifyScrollVisibility(page)
+  await verifyNextVersion(page,out,games)
+  await verifyRoomWorkspace(page,out,games)
   if (process.env.SONA_BRAND_ONLY) {
     assert.equal(errors.length,0,errors.join('\n'))
   } else if (process.env.SONA_UI44_ONLY) {
@@ -322,7 +326,7 @@ try {
     await builds.locator('.sobp-core-builds .sobp-row').first().waitFor()
     await builds.locator('.sona-career-backdrop img.is-loaded').waitFor()
     await builds.screenshot({path:path.join(out,'配装推荐_生涯原画半透明_模拟.png')})
-    await builds.locator('.sobp-close').click()
+    await page.getByRole('button',{name:'关闭对局工具',exact:true}).click()
     assert.equal(errors.length,0,errors.join('\n'))
   } else if (process.env.SONA_LIFECYCLE_ONLY) {
     await verifyRecommendationLifecycle(page)
@@ -1107,14 +1111,14 @@ try {
 
   assert.equal(await coreRows.nth(0).locator('.sobp-pick-rate strong').textContent(),'31.3%')
   assert.equal(await coreRows.nth(0).locator('.sobp-win-rate strong').textContent(),'60.0%')
-  assert.equal(await coreRows.nth(1).locator('.sobp-win-rate strong').textContent(),'0.0%')
+  assert.equal(await coreRows.nth(2).locator('.sobp-win-rate strong').textContent(),'0.0%')
   assert.equal(await coreRows.first().locator('.sobp-win-delta.is-positive').textContent(),'(+10.7%)')
-  assert.equal(await coreRows.nth(1).locator('.sobp-win-delta.is-negative').textContent(),'(-49.3%)')
-  assert.equal(await coreRows.nth(2).locator('.sobp-win-delta').count(),0)
+  assert.equal(await coreRows.nth(2).locator('.sobp-win-delta.is-negative').textContent(),'(-49.3%)')
+  assert.equal(await coreRows.nth(3).locator('.sobp-win-delta').count(),0)
   assert.notEqual(await coreRows.first().locator('.sobp-stat-track').evaluate((node)=>getComputedStyle(node).display),'none')
   assert.equal(await buildPanel.locator('.sobp-last-item .sobp-stat-track').first().evaluate((node)=>getComputedStyle(node).display),'none')
 
-  assert.equal(await coreRows.nth(2).locator('.sobp-win-rate strong').textContent(),'—')
+  assert.equal(await coreRows.nth(4).locator('.sobp-win-rate strong').textContent(),'—')
   assert.equal(await coreRows.nth(3).locator('.sobp-win-rate strong').textContent(),'—')
   assert.equal(await buildPanel.locator('.sobp-grid > .sobp-section').nth(0).locator('.sobp-win-rate strong').first().textContent(),'67.0%')
   assert.equal(await buildPanel.locator('.sobp-grid > .sobp-section').nth(1).locator('.sobp-win-rate strong').first().textContent(),'74.0%')
@@ -1200,10 +1204,10 @@ try {
   await ingameBuildView.locator('.sobp-pick-rate').first().waitFor()
   await ingameBuildView.locator('.sona-career-backdrop img.is-loaded').waitFor()
   assert.equal(await ingameBuildView.locator('.sobp-body').evaluate((node)=>getComputedStyle(node).backgroundColor),'rgba(0, 0, 0, 0)')
-  const ingameCloseBox=await ingameBuildView.locator('.sobp-close').boundingBox()
+  const ingameCloseBox=await page.getByRole('button',{name:'关闭对局工具',exact:true}).boundingBox()
   assert.ok(ingameCloseBox.x>=0 && ingameCloseBox.x+ingameCloseBox.width<=1450 && ingameCloseBox.y>=0)
   await ingameBuildView.screenshot({path:path.join(out,'游戏中配装推荐_模拟数据.png')})
-  await ingameBuildView.locator('.sobp-close').click()
+  await page.getByRole('button',{name:'关闭对局工具',exact:true}).click()
   await ingameBuildView.waitFor({state:'hidden'})
   await gameEntry.click()
   const gameView = page.getByTestId('game-history')
@@ -1385,7 +1389,7 @@ try {
     await page.waitForFunction((r)=>[...document.querySelectorAll('#qa-mayhem-recommendations .sobp-augment')].length===12&&[...document.querySelectorAll('#qa-mayhem-recommendations .sobp-augment')].every((node)=>Number(node.dataset.rarity)===r),rarity)
     assert.equal(await mayhemPanel.getByRole('button',{name:'海克斯推荐：展开全部',exact:true}).count(),0)
   }
-  await mayhemPanel.getByRole('button',{name:'全部',exact:true}).evaluate((node)=>node.click())
+  await mayhemPanel.getByRole('group',{name:'海克斯类型',exact:true}).getByRole('button',{name:'全部',exact:true}).evaluate((node)=>node.click())
   await mayhemPanel.getByRole('button',{name:'海克斯推荐：展开全部',exact:true}).click()
   assert.equal(await mayhemPanel.locator('.sobp-augment').count(),36)
   await mayhemPanel.getByRole('button',{name:'海克斯推荐：部分显示',exact:true}).click()

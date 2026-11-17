@@ -1,3 +1,5 @@
+import { SampleFilter, useRecommendationPreferences } from './RecommendationControls'
+import { hasEnoughSamples, sampleThreshold } from '@/lib/recommendation-filter'
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { GameDescription } from './GameDescription'
@@ -100,7 +102,7 @@ export interface BuildRecommendation {
   augments: Array<{
     rarity: number
     label?: string
-    items: Array<{ id: number; pickRate: number; averagePlace?: number; firstPlace?: number; winRate?: number }>
+    items: Array<{ id: number; pickRate: number; sampleCount?: number; averagePlace?: number; firstPlace?: number; winRate?: number }>
   }>
   meta?: RecommendationMeta
   warning?: string
@@ -126,11 +128,13 @@ export interface OpggBuildRecommendationPanelProps {
   onPositionChange: (position: OpggPosition) => void
   onClose: () => void
   koreanMatchups?: { items: OpggMatchup[]; version?: string }
+  hideClose?:boolean
+  onSwitchToHistory?:()=>void
 }
 
 export function OpggBuildRecommendationPanel({
   context,
-  recommendation,
+  recommendation: sourceRecommendation,
   loadError,
   isLoading,
   selectedTier,
@@ -138,9 +142,22 @@ export function OpggBuildRecommendationPanel({
   onPositionChange,
   onClose,
   koreanMatchups,
+  onSwitchToHistory,
+  hideClose=false,
 }: OpggBuildRecommendationPanelProps) {
   const { t } = useI18n()
-  const [equipmentOrder, setEquipmentOrder] = useState<'pick'|'win'>('pick')
+  const {preferences,change}=useRecommendationPreferences()
+  const equipmentOrder=preferences.equipmentOrder
+  const setEquipmentOrder=(order:'pick'|'win')=>change({equipmentOrder:order})
+  const recommendation=useMemo(()=>{
+    if (!sourceRecommendation) return sourceRecommendation
+    const minimum=sampleThreshold(preferences,'items')
+    const result={...sourceRecommendation}
+    for (const key of ['starterItems','boots','coreItems','prismItems','lastItems'] as const) result[key]=sortRecommendationBuilds(sourceRecommendation[key].filter(row=>hasEnoughSamples(row.play,minimum)),equipmentOrder)
+    result.runePages=sourceRecommendation.runePages.filter(row=>hasEnoughSamples(row.play,sampleThreshold(preferences,'runes')))
+    result.augments=sourceRecommendation.augments.map(group=>({...group,items:group.items.filter(row=>hasEnoughSamples(row.sampleCount,sampleThreshold(preferences,'augments')))}))
+    return result
+  },[sourceRecommendation,preferences])
   const champion = getChampionById(context.championId)
   const championName = champion ? `${champion.title} ${champion.name}` : t('opgg.unrecognizedChampion')
   const queueText = recommendation?.modeLabel || (context.queueId > 0 ? getQueueName(context.queueId) : t('opgg.unknownQueue'))
@@ -149,9 +166,9 @@ export function OpggBuildRecommendationPanel({
     ? ['OP.GG', '韩服单双排', formatPositionText(positionText), koreanMatchups.version && `${koreanMatchups.version} 版本`].filter(Boolean).join(' · ')
     : [queueText, formatPositionText(positionText), recommendation?.sourceLabel].filter(Boolean).join(' · ')
   const mayhem = isKiwiMode(context) || context.queueId === 2400
-  const coreItems = useMemo(()=>mayhem?sortRecommendationBuilds(recommendation?.coreItems??[],equipmentOrder):recommendation?.coreItems,[recommendation?.coreItems,equipmentOrder,mayhem])
-  const lastItems = useMemo(()=>mayhem?sortRecommendationBuilds(recommendation?.lastItems??[],equipmentOrder):recommendation?.lastItems,[recommendation?.lastItems,equipmentOrder,mayhem])
-  const boots = useMemo(()=>mayhem?sortRecommendationBuilds(recommendation?.boots??[],equipmentOrder):recommendation?.boots,[recommendation?.boots,equipmentOrder,mayhem])
+  const coreItems = useMemo(()=>sortRecommendationBuilds(recommendation?.coreItems??[],equipmentOrder),[recommendation?.coreItems,equipmentOrder,mayhem])
+  const lastItems = useMemo(()=>sortRecommendationBuilds(recommendation?.lastItems??[],equipmentOrder),[recommendation?.lastItems,equipmentOrder,mayhem])
+  const boots = useMemo(()=>sortRecommendationBuilds(recommendation?.boots??[],equipmentOrder),[recommendation?.boots,equipmentOrder,mayhem])
   const showAugments = mayhem || recommendation?.mode === 'arena'
   const showEarlyItems = mayhem || recommendation?.mode === 'ranked' || getQueue(context.queueId)?.mapId === 11
   const showPositionFilter = !!koreanMatchups || supportsPositionFilter(context, recommendation)
@@ -161,7 +178,7 @@ export function OpggBuildRecommendationPanel({
       <CareerBackdrop />
       <div className="sobp-ambient" />
 
-      <header className="sobp-titlebar">
+      <header className={`sobp-titlebar${hideClose ? ' sobp-titlebar--shared' : ''}`}>
         <div className="sobp-title-main">
           <div className="sobp-champion-ring">
             <img src={`/lol-game-data/assets/v1/champion-icons/${context.championId}.png`} alt="" />
@@ -175,14 +192,15 @@ export function OpggBuildRecommendationPanel({
           </div>
         </div>
         <div className="sobp-title-actions">
+          {onSwitchToHistory&&<button className="rh-button" type="button" onClick={onSwitchToHistory}>对局详情</button>}
           {showPositionFilter && (
             <PositionFilterSelect value={context.position} onChange={onPositionChange} allowUnselected={!!koreanMatchups} />
           )}
           {!mayhem && <TierFilterSelect value={selectedTier} onChange={onTierChange} />}
         </div>
-        <button type="button" className="sobp-close" onClick={onClose} aria-label={t('opgg.close')}>
+        {!hideClose&&<button type="button" className="sobp-close" onClick={onClose} aria-label={t('opgg.close')}>
           ×
-        </button>
+        </button>}
         {(recommendation?.meta || !!recommendation?.summary.length) && <div className="sobp-overview">
           <TrendMeta meta={recommendation?.meta} />
           <SummaryCards values={recommendation?.summary ?? []} />
@@ -198,13 +216,14 @@ export function OpggBuildRecommendationPanel({
           </>
         ) : (
           <>
+            {sourceRecommendation && <div className="sobp-sample-filters">{!mayhem&&<SampleFilter kind="runes"/>}</div>}
             {mayhem && <AugmentSection title={t('opgg.section.augments')} groups={recommendation?.augments} />}
             <div className={`sobp-grid${mayhem ? " sobp-grid--mayhem" : ""}`}>
               {!mayhem && <RuneSection title={t('opgg.section.runes')} runes={recommendation?.runePages} championName={championName} modeLabel={recommendation?.modeLabel || queueText} />}
               <SpellSection title={t('opgg.section.spells')} builds={recommendation?.summonerSpells} limit={MAX_RECOMMENDATION_ROWS} />
             </div>
-            {mayhem && recommendation && <div className="sobp-equipment-sort">
-              <span>装备排序</span><SonaSegmented value={equipmentOrder} options={EQUIPMENT_SORT_OPTIONS} onChange={setEquipmentOrder} label="装备排序" />
+            {recommendation && <div className="sobp-equipment-sort">
+              <SampleFilter kind="items"/><span>装备排序</span><SonaSegmented value={equipmentOrder} options={EQUIPMENT_SORT_OPTIONS} onChange={setEquipmentOrder} label="装备排序" />
               {recommendation.sourceLabel && <small>核心选取率按全部核心样本统计；成装与鞋子使用单件总体统计。</small>}
             </div>}
             {showEarlyItems && <>
@@ -697,12 +716,14 @@ const AUGMENT_TYPES = [{value:0,label:'全部'},{value:8,label:'棱彩'},{value:
 function AugmentSection({ title, groups }: { title: string; groups?: BuildRecommendation['augments'] }) {
   const assets = useContext(RecommendationAssetContext)
   const [rarity, setRarity] = useState(0)
+  const {preferences,change}=useRecommendationPreferences()
   const sorted=useMemo(()=>[...new Map((groups ?? []).flatMap((group) => group.items.map((item) => ({...item, rarity: group.rarity, rarityLabel: group.label ?? getAugmentRarityLabel(group.rarity)}))).map((item) => [item.id,item])).values()]
-    .sort((a,b) => (Number.isFinite(b.winRate) ? b.winRate! : -1) - (Number.isFinite(a.winRate) ? a.winRate! : -1) || b.pickRate-a.pickRate || a.id-b.id),[groups])
+    .sort((a,b) => { const rate=(value:unknown)=>typeof value==='number'&&Number.isFinite(value)?value:-1; return (preferences.augmentOrder==='pick'?rate(b.pickRate)-rate(a.pickRate):rate(b.winRate)-rate(a.winRate)) || rate(b.pickRate)-rate(a.pickRate) || a.id-b.id }),[groups,preferences.augmentOrder])
   const entries=useMemo(()=>rarity?sorted.filter((item)=>item.rarity===rarity):sorted,[sorted,rarity])
   const toolbar=<div className="sobp-augment-filters">
+    <SampleFilter kind="augments"/>
     <SonaSegmented value={rarity} options={AUGMENT_TYPES} onChange={setRarity} label="海克斯类型" className="sobp-augment-switch" thumbClassName="sobp-augment-switch-thumb" />
-    <small>{entries.length} 个 · 胜率排序</small>
+    <SonaSegmented value={preferences.augmentOrder} options={EQUIPMENT_SORT_OPTIONS} onChange={order=>change({augmentOrder:order})} label="海克斯排序"/><small>{entries.length} 个</small>
   </div>
   return <div className="sobp-augment-wrap sobp-augments-compact">
     <Section title={title} empty={!entries.length} count={entries.length} toolbar={toolbar} partialLimit={12}>
