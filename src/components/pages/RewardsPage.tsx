@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { SonaButton } from '@/components/ui/SonaButton'
+import { SonaSegmented } from '@/components/ui/SonaSegmented'
+import { LootHelperSection } from '@/components/ui/LootHelperSection'
 import { lcu, type RewardsGrant } from '@/lib/lcu'
 import { useI18n } from '@/i18n'
-import { logger } from '@/index'
+import { logger } from '@/lib/logger'
 import '@/styles/SettingsPage.css'
 import '@/styles/RewardsPage.css'
 
@@ -22,6 +24,7 @@ export function RewardsPage() {
   const { t } = useI18n()
 
   const [grants, setGrants] = useState<RewardsGrant[]>([])
+  const [activeTab, setActiveTab] = useState<'grants' | 'loot'>('grants')
   const [loading, setLoading] = useState(false)
   // 正在提交的是"领取所选"还是"一键领取"，null 表示空闲
   const [claiming, setClaiming] = useState<'selected' | 'all' | null>(null)
@@ -170,8 +173,26 @@ export function RewardsPage() {
 
   return (
     <div className="sona-settings sona-rewards">
-      <h2 className="sona-settings-title">{t('rewards.title')}</h2>
+      <div className="sona-rewards-header">
+        <h2 className="sona-settings-title" style={{ marginBottom: 0 }}>
+          {activeTab === 'grants' ? t('rewards.title') : '海克斯战利品分解助手'}
+        </h2>
+        <SonaSegmented
+          label="奖励与战利品切换"
+          value={activeTab}
+          onChange={setActiveTab}
+          className="sona-rewards-tabs"
+          options={[
+            { value: 'grants', label: grants.length > 0 ? `奖励领取 (${grants.length})` : '奖励领取' },
+            { value: 'loot', label: '战利品分解' },
+          ]}
+        />
+      </div>
 
+      {activeTab === 'loot' ? (
+        <LootHelperSection />
+      ) : (
+        <>
       <div className="sona-rewards-bar">
         <p className="sona-rewards-hint">{t('rewards.hint')}</p>
         <div className="sona-rewards-actions">
@@ -227,6 +248,8 @@ export function RewardsPage() {
             })}
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   )

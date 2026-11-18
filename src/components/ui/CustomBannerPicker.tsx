@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { lcu, type RegaliaBannerInventoryEntry, type RegaliaBannerInventoryItem } from '@/lib/lcu'
-import { logger } from '@/index'
+import { logger } from '@/lib/logger'
 import '@/styles/CustomBannerPicker.css'
 
 interface BannerItem {

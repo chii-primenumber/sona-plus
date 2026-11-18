@@ -1,6 +1,6 @@
-# Sona Plus v1.1.3
+# Sona Plus v1.2.0
 
-Sona Plus 是基于 WJZ_P 的 Sona v1.10.0 二次开发的衍生版本，采用独立版本号 **v1.1.3**，继续遵循 **AGPL-3.0**。由 chii-primenumber 持续开发与维护，主要涵盖个人战绩、玩家搜索、队伍总览、对位与回放，以及统一的黑金界面和显示设置。队伍卡片与 Akari 评分参考 Hanxven 的 [League Akari](https://github.com/LeagueAkari/LeagueAkari)，评分适配保留其 MIT 许可。[原版 Sona 项目](https://github.com/WJZ-P/sona) · [Sona Plus 仓库](https://github.com/chii-primenumber/sona-plus)
+Sona Plus 是基于 WJZ_P 的 Sona v1.10.0 二次开发的衍生版本，采用独立版本号 **v1.2.0**，继续遵循 **AGPL-3.0**。由 chii-primenumber 持续开发与维护，主要涵盖个人战绩、玩家搜索、队伍总览、实战情报（小本本／避雷预警／阵容诊断／替补席绝活与心愿单／结算 MVP 与智能点赞）、对位与回放、战利品分解与免退客户端热更新，以及统一的黑金界面和显示设置。队伍卡片与 Akari 评分参考 Hanxven 的 [League Akari](https://github.com/LeagueAkari/LeagueAkari)，评分适配保留其 MIT 许可。[原版 Sona 项目](https://github.com/WJZ-P/sona) · [Sona Plus 仓库](https://github.com/chii-primenumber/sona-plus)
 
 **Original Project by WJZ_P** · **Modified & Maintained by chii-primenumber**。新增和修改的功能由 chii-primenumber 开发与维护；原作者 WJZ_P 及原项目贡献继续保留署名。[完整功能介绍](README.md)
 
@@ -16,7 +16,7 @@ Sona Plus 是基于 WJZ_P 的 Sona v1.10.0 二次开发的衍生版本，采用�
 2. 将已经安装的 `sona` 文件夹整个备份到**插件目录外**。先留好这一份，以便回退。
 3. 将交付目录里的 `sona` 文件夹复制到插件目录。确认结构为 `plugins/sona/index.js`，旁边有 `index.css` 和 `assets`。
 4. 如果原版 `assets` 中有你自己的壁纸、视频或头像，把这些自定义文件复制到新版 `sona/assets` 中。请只启用一份 Sona Plus。保留 `sona` 文件夹名，以便沿用原先的资源路径和设置。
-5. 刷新 Pengu Loader 的插件列表，确认 Sona Plus 已启用，再启动 LOL 客户端。面板和 About 页面显示版本 `v1.1.3`。插件目录继续命名为 `sona`，以兼容已有资源和设置。
+5. 刷新 Pengu Loader 的插件列表，确认 Sona Plus 已启用，再启动 LOL 客户端。面板和 About 页面显示版本 `v1.2.0`。插件目录继续命名为 `sona`，以兼容已有资源和设置。日常更新时无需退出客户端，直接双击插件目录内的 `双击更新SonaPlus.cmd` 后按 `Ctrl+Enter` 重载即可生效。
 
 回退时，退出客户端，把个人版移出插件目录，再把备份的原版 `sona` 移回去，刷新插件列表后重启。定制版不会在启动时主动弹出上游更新提示，避免将定制代码误覆盖。
 

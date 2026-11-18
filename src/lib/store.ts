@@ -246,6 +246,48 @@ export interface SonaConfig {
   quickLobbyMode: boolean
   /** 快速大厅模式的目标队列 ID */
   quickLobbyQueueId: number
+  /** 自定义跨域代理地址（为空时使用默认兜底代理） */
+  customCorsProxyUrl: string
+  /** 远端热同步的英雄平衡性数据缓存（仅当远端版本新于内置版本时保存） */
+  cachedChampionBalance: {
+    fetchedAt: number
+    updatedAt: string
+    champions: Record<string, unknown>
+  } | null
+  /** 本地玩家标记（小本本）：key 为 puuid */
+  playerTags: Record<string, import('./player-tags').PlayerTagRecord>
+  /** 玩家标记（小本本）界面入口与角标总开关 */
+  playerTagEnabled: boolean
+  /** 历史撞车自动提醒总开关 */
+  encounterAlertEnabled: boolean
+  /** E1：选人阶段遇到小本本「避雷 / 注意」玩家时强提醒 */
+  champSelectTagAlert: boolean
+  /** E2：赛后结算与战报 MVP/SVP 评分徽章及结算快捷记本开关 */
+  postgameEnhancement: boolean
+  /** E2：对局结束自动点赞策略（smart=优先好友与MVP并跳过避雷，friends_only=仅好友，random=随机） */
+  autoHonorStrategy: 'smart' | 'friends_only' | 'random'
+  /** E4：锁定英雄后自动随机切换已拥有皮肤 / 炫彩 */
+  autoRandomSkin: boolean
+  /** E4：随机皮肤时排除原皮（无其他皮肤时保留原皮） */
+  autoRandomSkinExcludeBase: boolean
+  /** E5：自动处理选人阶段楼层互换 / 英雄交换请求 */
+  autoAcceptSwap: boolean
+  /** E5：自动同意交换策略 */
+  autoAcceptSwapStrategy: import('./champselect-enhancements').AutoSwapStrategy
+  /** E6：按游戏模式 / 分路自动切换秒抢与禁用预设列表 */
+  champSelectPresetSwitch: boolean
+  /** E6：分模式 / 分路秒抢与禁用英雄预设 */
+  champSelectPresets: import('./champselect-enhancements').ChampSelectPresetsMap
+  /** BP 选人阶段：阵容伤害结构与短板诊断条 */
+  champSelectCompDiagnostic: boolean
+  /** 大乱斗替补席：心愿英雄池提醒/秒换总开关 */
+  aramWishlistEnabled: boolean
+  /** 大乱斗替补席：心愿英雄优先级队列（按顺序优先） */
+  aramWishlistChampionIds: number[]
+  /** 大乱斗替补席：心愿英雄出现时是否自动秒换（false 为仅金框高亮提醒） */
+  aramWishlistAutoSwap: boolean
+  /** 大乱斗替补席：队友绝活/高熟练度英雄提示角标 */
+  aramBenchTeammateHint: boolean
 }
 
 
@@ -355,6 +397,29 @@ const DEFAULT_CONFIG: SonaConfig = {
   autoReturnMode: 'queue',
   quickLobbyMode: false,
   quickLobbyQueueId: 430,
+  customCorsProxyUrl: '',
+  cachedChampionBalance: null,
+  playerTags: {},
+  playerTagEnabled: true,
+  encounterAlertEnabled: true,
+  champSelectTagAlert: true,
+  postgameEnhancement: true,
+  autoHonorStrategy: 'smart',
+  autoRandomSkin: false,
+  autoRandomSkinExcludeBase: true,
+  autoAcceptSwap: false,
+  autoAcceptSwapStrategy: 'friends_only',
+  champSelectPresetSwitch: true,
+  champSelectPresets: {},
+  champSelectCompDiagnostic: true,
+  aramWishlistEnabled: false,
+  aramWishlistChampionIds: [],
+  aramWishlistAutoSwap: true,
+  aramBenchTeammateHint: true,
+}
+
+export function getDefaultConfig(): Readonly<SonaConfig> {
+  return DEFAULT_CONFIG
 }
 
 
@@ -363,15 +428,90 @@ const DEFAULT_CONFIG: SonaConfig = {
 
 /** DataStore 键前缀，避免与其他插件冲突 */
 const KEY_PREFIX = 'sona:'
+const WRITE_COOLDOWN_MS = 150
 
 type ConfigKey = keyof SonaConfig
 type ChangeListener<K extends ConfigKey = ConfigKey> = (value: SonaConfig[K], key: K) => void
+
+const pendingDiskWrites = new Map<string, unknown>()
+const keyCooldownTimers = new Map<string, ReturnType<typeof setTimeout>>()
+let batchFlushTimer: ReturnType<typeof setTimeout> | null = null
+let isBatching = false
+let unloadHooksRegistered = false
+
+function flushKeyWrite(storageKey: string) {
+  const timer = keyCooldownTimers.get(storageKey)
+  if (timer !== undefined) {
+    clearTimeout(timer)
+    keyCooldownTimers.delete(storageKey)
+  }
+  if (!pendingDiskWrites.has(storageKey)) return
+  const value = pendingDiskWrites.get(storageKey)
+  pendingDiskWrites.delete(storageKey)
+  DataStore.set(storageKey, value)
+}
+
+function flushPendingDiskWrites() {
+  if (batchFlushTimer !== null) {
+    clearTimeout(batchFlushTimer)
+    batchFlushTimer = null
+  }
+  for (const timer of keyCooldownTimers.values()) {
+    clearTimeout(timer)
+  }
+  keyCooldownTimers.clear()
+  if (pendingDiskWrites.size === 0) return
+  const entries = [...pendingDiskWrites.entries()]
+  pendingDiskWrites.clear()
+  for (const [storageKey, value] of entries) {
+    DataStore.set(storageKey, value)
+  }
+}
+
+function scheduleDiskWrite(storageKey: string, value: unknown) {
+  if (isBatching) {
+    pendingDiskWrites.set(storageKey, value)
+    if (batchFlushTimer === null) {
+      batchFlushTimer = setTimeout(flushPendingDiskWrites, WRITE_COOLDOWN_MS)
+    }
+    return
+  }
+
+  if (!keyCooldownTimers.has(storageKey)) {
+    // 每个配置键首次变更立即落盘（Leading edge），仅合并同一键 150ms 内的高频连续拖拽（Trailing edge）
+    DataStore.set(storageKey, value)
+    const timer = setTimeout(() => {
+      keyCooldownTimers.delete(storageKey)
+      if (pendingDiskWrites.has(storageKey)) {
+        flushKeyWrite(storageKey)
+      }
+    }, WRITE_COOLDOWN_MS)
+    keyCooldownTimers.set(storageKey, timer)
+    return
+  }
+
+  pendingDiskWrites.set(storageKey, value)
+}
+
+function ensureUnloadHooks() {
+  if (unloadHooksRegistered || typeof window === 'undefined') return
+  unloadHooksRegistered = true
+  window.addEventListener('pagehide', flushPendingDiskWrites)
+  window.addEventListener('beforeunload', flushPendingDiskWrites)
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) flushPendingDiskWrites()
+    })
+  }
+}
 
 class SonaStore {
   private listeners = new Map<ConfigKey, Set<ChangeListener>>()
   private cache: SonaConfig
 
   constructor() {
+    ensureUnloadHooks()
+    flushPendingDiskWrites()
     // 启动时把所有配置加载到内存缓存中
     const loaded = { ...DEFAULT_CONFIG }
     for (const key of Object.keys(DEFAULT_CONFIG) as ConfigKey[]) {
@@ -389,7 +529,7 @@ class SonaStore {
   }
 
   /**
-   * 设置配置值（自动持久化 + 触发监听）
+   * 设置配置值（内存 0 延迟更新 + 120ms 合并防抖持久化 + 触发监听）
    */
   set<K extends ConfigKey>(key: K, value: SonaConfig[K]) {
     if (key === 'theme') value = 'client' as SonaConfig[K]
@@ -397,7 +537,7 @@ class SonaStore {
     if (old === value) return
 
     this.cache[key] = value
-    DataStore.set(`${KEY_PREFIX}${key}`, value)
+    scheduleDiskWrite(`${KEY_PREFIX}${key}`, value)
 
     // 触发变化监听
     const keyListeners = this.listeners.get(key)
@@ -410,6 +550,32 @@ class SonaStore {
         }
       })
     }
+  }
+
+  /**
+   * 批量写入多个配置项并合并防抖冲刷
+   */
+  setBatch(patch: Partial<SonaConfig>, immediateFlush = false) {
+    const prevBatch = isBatching
+    isBatching = true
+    try {
+      for (const [rawKey, rawValue] of Object.entries(patch) as Array<[ConfigKey, SonaConfig[ConfigKey]]>) {
+        if (!(rawKey in DEFAULT_CONFIG)) continue
+        this.set(rawKey, rawValue)
+      }
+    } finally {
+      isBatching = prevBatch
+    }
+    if (immediateFlush) {
+      this.flush()
+    }
+  }
+
+  /**
+   * 立即将挂起的防抖写入冲刷到底层 DataStore
+   */
+  flush() {
+    flushPendingDiskWrites()
   }
 
   /**
@@ -444,9 +610,16 @@ class SonaStore {
    * 重置所有配置为默认值
    */
   resetAll() {
-    for (const key of Object.keys(DEFAULT_CONFIG) as ConfigKey[]) {
-      this.set(key, DEFAULT_CONFIG[key])
+    const prevBatch = isBatching
+    isBatching = true
+    try {
+      for (const key of Object.keys(DEFAULT_CONFIG) as ConfigKey[]) {
+        this.set(key, DEFAULT_CONFIG[key])
+      }
+    } finally {
+      isBatching = prevBatch
     }
+    this.flush()
   }
 
   /**

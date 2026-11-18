@@ -150,7 +150,7 @@ export async function measurePerformance({ page, context, origin, output, versio
   await measure('augment-filter-fold-5cycles', async () => {
     const panel = page.locator('#perf-build')
     for (let i = 0; i < 5; i++) {
-      for (const name of ['棱彩', '黄金', '白银', '全部']) await panel.getByRole('button', { name, exact: true }).click()
+      for (const name of ['棱彩', '黄金', '白银', '全部']) await panel.getByRole('group', { name: '海克斯类型', exact: true }).getByRole('button', { name, exact: true }).click()
       await panel.getByRole('button', { name: '海克斯推荐：展开全部', exact: true }).click()
       await panel.getByRole('button', { name: '海克斯推荐：收起', exact: true }).click()
       await page.waitForTimeout(220)

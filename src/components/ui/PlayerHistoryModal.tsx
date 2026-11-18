@@ -10,11 +10,13 @@ import { HistoryAssetTooltip } from './HistoryAssetTooltip'
 import { HistoryPerformanceStats } from './HistoryPerformanceStats'
 import { HistoryScrollTop } from './HistoryScrollTop'
 import { RefreshIcon, SettingsIcon, SearchIcon } from './icons'
+import { PlayerTagBadge, PlayerTagBookModal, PlayerTagEditorModal, TagBookIcon, TagBookmarkIcon } from './PlayerTagWidgets'
+import { usePlayerTag, usePlayerTagFeatureEnabled } from '@/lib/player-tags'
 import { ChampionStrip, HistoryImage, RankCards, SummaryStats, championName } from './HistoryWidgets'
 import { HistoryMatchList } from './HistoryMatchList'
-import { getChampIcon, getPlayableQueues, getQueueName, getQueue } from '@/lib/assets'
+import { getChampIcon, getPlayableQueues, getQueueName, getQueue, resolveCanonicalQueueId } from '@/lib/assets'
 import { deadline, fetchHistoryMastery, fetchHistoryRanks, fetchHistorySummoner, type HistoryMastery, type HistoryRank } from '@/lib/history-api'
-import { lcu } from '@/lib/lcu'
+import { lcu, isMatchingQueue } from '@/lib/lcu'
 import { historyPlayerFromSummoner, historyServerName, rememberHistoryPlayer, type HistoryPlayer } from '@/lib/history-search'
 import { championStats, encounters, numberText, percentText, POSITION_NAMES, profileIconUrl, splitRiotId, summarize, toHistoryMatches } from '@/lib/history-model'
 import { calculatePlayerScore, playerScoreLabel, playerScoreRange, formatPlayerScore } from '@/lib/player-score'
@@ -45,13 +47,15 @@ export function PlayerHistoryModal({ open, onClose, puuid, playerName, queueId }
   }, [current.puuid, current.serverId])
   const viewKey = `${getHistoryEpoch()}:${current.serverId ?? ''}:${current.puuid}`
   return <Modal open={open} onClose={onClose} careerBackground width="min(1320px, 95vw)" height="min(940px, 92vh)">
-    {current.puuid && <PlayerHistoryContent key={viewKey} open={open} target={current}
-      savedView={views.current.get(viewKey)} rememberView={(view) => {
-        views.current.delete(viewKey); views.current.set(viewKey, view)
-        while (views.current.size > 12) views.current.delete(views.current.keys().next().value!)
-      }}
-      defaultQueueId={queueId || 0} onSelectPlayer={inspect}
-      onBack={navigation.trail.length ? () => setNavigation((nav) => ({ ...nav, current: nav.trail[nav.trail.length - 1], trail: nav.trail.slice(0, -1) })) : undefined} />}
+    {current.puuid
+      ? <PlayerHistoryContent key={viewKey} open={open} target={current}
+          savedView={views.current.get(viewKey)} rememberView={(view) => {
+            views.current.delete(viewKey); views.current.set(viewKey, view)
+            while (views.current.size > 12) views.current.delete(views.current.keys().next().value!)
+          }}
+          defaultQueueId={queueId || 0} onSelectPlayer={inspect}
+          onBack={navigation.trail.length ? () => setNavigation((nav) => ({ ...nav, current: nav.trail[nav.trail.length - 1], trail: nav.trail.slice(0, -1) })) : undefined} />
+      : <div style={{ display: 'grid', placeItems: 'center', height: '100%', color: '#c8aa6e', fontSize: 13 }}>正在查询召唤师资料…</div>}
   </Modal>
 }
 
@@ -81,7 +85,11 @@ function PlayerHistoryContent({ open, target, defaultQueueId, onSelectPlayer, on
   const [showSearch, setShowSearch] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showCompare, setShowCompare] = useState(false)
+  const [showTagEditor, setShowTagEditor] = useState(false)
+  const [showTagBook, setShowTagBook] = useState(false)
   const [copyStatus, setCopyStatus] = useState('')
+  const tagFeatureEnabled = usePlayerTagFeatureEnabled()
+  const playerTag = usePlayerTag(target.puuid)
   const sidebarRef = useRef<HTMLElement | null>(null)
   const contentRef = useRef<HTMLDivElement | null>(null)
   const scrollTargets = useMemo(()=>[sidebarRef,contentRef],[])
@@ -148,7 +156,7 @@ function PlayerHistoryContent({ open, target, defaultQueueId, onSelectPlayer, on
     return () => controller.abort()
   }, [open, target, profileRevision, showRanks, showMastery])
 
-  const allMatches = useMemo(() => toHistoryMatches(pages.games, target.puuid).filter((m) => !queueId || m.game.json.queueId === queueId), [pages.games, target.puuid, queueId])
+  const allMatches = useMemo(() => toHistoryMatches(pages.games, target.puuid).filter((m) => !queueId || isMatchingQueue(m.game, queueId)), [pages.games, target.puuid, queueId])
   const showPositionFilter = queueId ? getQueue(queueId)?.mapId === 11 || (!getQueue(queueId)?.mapId && allMatches.some((match)=>match.game.json.mapId===11)) : allMatches.some((match)=>match.game.json.mapId===11)
   const activePosition = showPositionFilter && LANE_POSITIONS.includes(position) ? position : ''
   const knownNonRift = queueId ? Boolean(getQueue(queueId)?.mapId && getQueue(queueId)?.mapId !== 11) : allMatches.length > 0 && !showPositionFilter
@@ -180,7 +188,17 @@ function PlayerHistoryContent({ open, target, defaultQueueId, onSelectPlayer, on
   }, [filtered, target.puuid, scoreSystem])
   const queues = useMemo(() => {
     const map = new Map(getPlayableQueues().map((q) => [q.id, q.name]))
-    for (const id of [420, 440, 430, 450, 2400, defaultQueueId, ...pages.games.map((g) => g.json.queueId)]) if (id > 0 && !map.has(id)) map.set(id, getQueueName(id))
+    const seenNames = new Set([...map.values()].map((n) => n.trim()))
+    for (const rawId of [420, 440, 430, 450, 2400, defaultQueueId, ...pages.games.map((g) => g.json.queueId)]) {
+      const id = resolveCanonicalQueueId(rawId)
+      if (id > 0 && !map.has(id)) {
+        const qName = getQueueName(id).trim()
+        if (!seenNames.has(qName)) {
+          seenNames.add(qName)
+          map.set(id, qName)
+        }
+      }
+    }
     return [...map].map(([id, name]) => ({ id, name }))
   }, [pages.games, defaultQueueId])
   const name = profile?.name || target.name || '玩家战绩'
@@ -209,11 +227,16 @@ function PlayerHistoryContent({ open, target, defaultQueueId, onSelectPlayer, on
               </svg>
             </button>}
           </div>
-          {identity.tag && <span className="rh-profile-tag">{identity.tag}</span>}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            {identity.tag && <span className="rh-profile-tag">{identity.tag}</span>}
+            {playerTag && <PlayerTagBadge puuid={target.puuid} record={playerTag} onClick={() => setShowTagEditor(true)} />}
+          </div>
           {target.serverId && <span className="rh-muted">{historyServerName(target.serverId)}</span>}</div>
       </div>
       {show('ranks') && <RankCards ranks={ranks} status={rankStatus} />}
       <div className="rh-header-actions">
+        {tagFeatureEnabled && <HistoryAssetTooltip title={playerTag ? `编辑标记：${playerTag.label}` : '标记该玩家'} compact asChild><button type="button" className="rh-button rh-icon-button" aria-label="标记该玩家" onClick={() => setShowTagEditor(true)}><span aria-hidden="true"><TagBookmarkIcon filled={Boolean(playerTag)} /></span></button></HistoryAssetTooltip>}
+        {tagFeatureEnabled && <HistoryAssetTooltip title="玩家小本本" compact asChild><button type="button" className="rh-button rh-icon-button" aria-label="玩家小本本" onClick={() => setShowTagBook(true)}><span aria-hidden="true"><TagBookIcon /></span></button></HistoryAssetTooltip>}
         <HistoryAssetTooltip title="玩家对比" compact asChild><button type="button" className="rh-button rh-icon-button" aria-label="玩家对比" onClick={() => setShowCompare(true)}><span aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true"><rect x="1.5" y="3" width="5.5" height="10" rx="1" /><rect x="9" y="3" width="5.5" height="10" rx="1" /></svg></span></button></HistoryAssetTooltip>
         <HistoryAssetTooltip title="刷新" compact asChild><button type="button" className="rh-button rh-icon-button" aria-label="刷新" onClick={refresh} disabled={pages.loading}><span aria-hidden="true"><RefreshIcon /></span></button></HistoryAssetTooltip>
         <HistoryAssetTooltip title="显示设置" compact asChild><button type="button" className="rh-button rh-icon-button" aria-label="显示设置" onClick={() => setShowSettings(true)}><span aria-hidden="true"><SettingsIcon /></span></button></HistoryAssetTooltip>
@@ -284,5 +307,7 @@ function PlayerHistoryContent({ open, target, defaultQueueId, onSelectPlayer, on
       onSelectPlayer(player)
     }} />
     <HistoryCompareModal open={open && showCompare} onClose={() => setShowCompare(false)} games={filteredGames} puuid={target.puuid} system={scoreSystem} candidates={compareCandidates} serverId={target.serverId} queueId={queueId} count={batchSize} filters={{championId,position:activePosition,outcome:result,hideAborted}} sourceLoading={pages.loading} onRefresh={refresh} />
+    <PlayerTagEditorModal open={open && tagFeatureEnabled && showTagEditor} target={{ puuid: target.puuid, name, serverId: target.serverId }} onClose={() => setShowTagEditor(false)} />
+    <PlayerTagBookModal open={open && tagFeatureEnabled && showTagBook} onClose={() => setShowTagBook(false)} onInspectPlayer={(nextPuuid, nextName, nextServer) => onSelectPlayer({ puuid: nextPuuid, name: nextName, serverId: nextServer ?? target.serverId })} />
   </div>
 }

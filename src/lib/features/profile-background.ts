@@ -1,6 +1,6 @@
 import { createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { logger } from '@/index'
+import { logger } from '@/lib/logger'
 import { injector } from '@/lib/InjectorManager'
 import { ProfileBackgroundPicker } from '@/components/ui/ProfileBackgroundPicker'
 

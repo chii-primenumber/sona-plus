@@ -1,4 +1,4 @@
-import { logger } from '@/index'
+import { logger } from '@/lib/logger'
 import { store } from '@/lib/store'
 import { lcu, LcuEventUri } from '@/lib/lcu'
 import type { LCUEventMessage, GameflowPhase, ReadyCheck } from '@/lib/lcu'

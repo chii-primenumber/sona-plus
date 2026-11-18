@@ -2,6 +2,7 @@
 param([string]$BundleRoot)
 $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot '..\installer\Install-Sona.ps1')
+. (Join-Path $PSScriptRoot '..\installer\Update-Sona.ps1')
 $script:Checks=New-Object 'System.Collections.Generic.List[string]'
 $testRoot=Join-Path ([IO.Path]::GetTempPath()) ('sona-installer-test_'+[guid]::NewGuid().ToString('N'))
 [IO.Directory]::CreateDirectory($testRoot)|Out-Null
@@ -52,9 +53,27 @@ if($BundleRoot){
     Assert-Check ($bundle.files.Count -gt 20) 'real packaged payload passes every SHA256 check'
     $raw=[IO.File]::ReadAllBytes((Join-Path $BundleRoot 'Install-Sona.ps1'))
     Assert-Check ($raw[0]-eq 239 -and $raw[1]-eq 187 -and $raw[2]-eq 191) 'packaged script has UTF8 BOM for Windows PowerShell 5.1'
+    $cmdRaw=[IO.File]::ReadAllBytes((Join-Path $BundleRoot '一键安装.cmd'))
+    Assert-Check ($cmdRaw[0]-ne 239) 'packaged cmd launcher has no UTF8 BOM for cmd.exe'
+    $updRaw=[IO.File]::ReadAllBytes((Join-Path $BundleRoot 'sona\Update-Sona.ps1'))
+    Assert-Check ($updRaw[0]-eq 239 -and $updRaw[1]-eq 187 -and $updRaw[2]-eq 191) 'packaged in-folder updater script has UTF8 BOM for PowerShell 5.1'
+    $updCmdRaw=[IO.File]::ReadAllBytes((Join-Path $BundleRoot 'sona\双击更新SonaPlus.cmd'))
+    Assert-Check ($updCmdRaw[0]-ne 239) 'packaged in-folder updater cmd launcher has no UTF8 BOM'
+    $updErrors=$null;$updTokens=$null
+    [void][Management.Automation.Language.Parser]::ParseFile((Join-Path $BundleRoot 'sona\Update-Sona.ps1'),[ref]$updTokens,[ref]$updErrors)
+    Assert-Check ($updErrors.Count-eq 0) 'packaged in-folder updater parses under PowerShell 5.1'
     $parseErrors=$null;$tokens=$null
     [void][Management.Automation.Language.Parser]::ParseFile((Join-Path $BundleRoot 'Install-Sona.ps1'),[ref]$tokens,[ref]$parseErrors)
     Assert-Check ($parseErrors.Count-eq 0) 'packaged script parses under PowerShell 5.1'
+    foreach($md in @(Get-ChildItem -LiteralPath $BundleRoot -Filter '*.md' -File -Recurse)){
+        $content=[regex]::Replace([IO.File]::ReadAllText($md.FullName),'```[\s\S]*?```','')
+        foreach($m in [regex]::Matches($content,'(?<!!)\[[^\]]+\]\(([^)]+)\)')){
+            $target=$m.Groups[1].Value.Trim().Split('#')[0].Trim()
+            if(!$target -or $target -match '^(?:https?:|mailto:)'){continue}
+            $resolved=[IO.Path]::GetFullPath((Join-Path $md.DirectoryName $target))
+            Assert-Check ((Test-Within $resolved $BundleRoot) -and (Test-Path -LiteralPath $resolved -PathType Leaf)) ('packaged markdown link resolves: '+$md.Name+' -> '+$target)
+        }
+    }
 }
 
 $fresh=New-Fixture 'fresh'
@@ -151,6 +170,49 @@ Put (Join-Path $link.league 'version.dll') 'unrelated-file'
 Expect-Failure {Invoke-SonaDeployment $link.package $link.league $link.loader $link.backup} 'version.dll' 'unrelated client DLL is never overwritten'
 Assert-Check ((Read (Join-Path $link.league 'version.dll'))-eq 'unrelated-file') 'client DLL contents retained after conflict'
 
+Assert-Check (!(Test-Path -LiteralPath (Join-Path $backup 'staging'))) 'temporary staging directory removed after completed deployment'
+
+$retention=New-Fixture 'backup-retention'
+$script:FakeDebugger=''
+foreach($oldName in @('20260101_000001_00000001','20260101_000002_00000002','20260101_000003_00000003','20260101_000004_00000004')){
+    Put (Join-Path $retention.backup ($oldName+'\backup.json')) '{"schema":1,"status":"installed"}'
+}
+Put (Join-Path $retention.backup '20260101_000000_ffffffff\backup.json') '{"schema":1}'
+Put (Join-Path $retention.backup 'manual-notes\readme.txt') 'keep-user-folder'
+$latestRetained=Invoke-SonaDeployment $retention.package $retention.league $retention.loader $retention.backup 3
+Assert-Check (!(Test-Path -LiteralPath (Join-Path $retention.backup '20260101_000001_00000001')) -and !(Test-Path -LiteralPath (Join-Path $retention.backup '20260101_000002_00000002'))) 'oldest completed backups pruned beyond KeepBackups limit'
+Assert-Check ((Test-Path -LiteralPath (Join-Path $retention.backup '20260101_000003_00000003')) -and (Test-Path -LiteralPath (Join-Path $retention.backup '20260101_000004_00000004')) -and (Test-Path -LiteralPath $latestRetained)) 'newest completed backups retained up to KeepBackups limit'
+Assert-Check ((Test-Path -LiteralPath (Join-Path $retention.backup '20260101_000000_ffffffff')) -and (Test-Path -LiteralPath (Join-Path $retention.backup 'manual-notes\readme.txt'))) 'incomplete backups and unrelated folders never pruned'
+
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$updFixture=Join-Path $testRoot 'in-folder-updater'
+$updTarget=Join-Path $updFixture 'Pengu Loader\plugins\sona'
+$updBackup=Join-Path $updFixture 'backups'
+$updSrc=Join-Path $updFixture 'zip-src'
+Put (Join-Path $updTarget 'index.js') "/**`n * @version 1.1.2`n */`nold-entry"
+Put (Join-Path $updTarget 'index.css') 'old-css'
+Put (Join-Path $updTarget 'chunks\old-chunk-123.js') 'stale-chunk'
+Put (Join-Path $updTarget 'assets\wallpaper.png') 'user-custom-wallpaper'
+Put (Join-Path $updSrc 'sona\index.js') "/**`n * @version 1.1.3`n */`nnew-entry"
+Put (Join-Path $updSrc 'sona\index.css') 'new-css'
+Put (Join-Path $updSrc 'sona\chunks\new-chunk-456.js') 'fresh-chunk'
+Put (Join-Path $updSrc 'sona\assets\wallpaper.png') 'default-wallpaper'
+Put (Join-Path $updSrc 'sona\assets\licenses\LeagueAkari-MIT.txt') 'mit-license'
+$zipPath=Join-Path $updFixture 'sona-plus-v1.1.3.zip'
+[IO.Compression.ZipFile]::CreateFromDirectory($updSrc, $zipPath)
+$zipSha=(Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash
+$sumsPath=Join-Path $updFixture 'SHA256SUMS.txt'
+Put $sumsPath ($zipSha+'  sona-plus-v1.1.3.zip')
+$badSumsPath=Join-Path $updFixture 'BAD_SHA256SUMS.txt'
+Put $badSumsPath (('0'*64)+'  sona-plus-v1.1.3.zip')
+Expect-Failure {Invoke-SonaPluginUpdate $updTarget $zipPath $badSumsPath $updBackup 3} 'SHA256' 'in-folder updater rejects mismatched SHA256 before modifying plugin'
+Assert-Check ((Get-CurrentPluginVersion $updTarget)-eq '1.1.2') 'rejected update leaves existing plugin version untouched'
+Invoke-SonaPluginUpdate $updTarget $zipPath $sumsPath $updBackup 3|Out-Null
+Assert-Check ((Get-CurrentPluginVersion $updTarget)-eq '1.1.3' -and (Read (Join-Path $updTarget 'chunks\new-chunk-456.js'))-eq 'fresh-chunk') 'in-folder updater installs new version and code-split chunks'
+Assert-Check (!(Test-Path -LiteralPath (Join-Path $updTarget 'chunks\old-chunk-123.js'))) 'in-folder updater removes stale chunks from previous version'
+Assert-Check ((Read (Join-Path $updTarget 'assets\wallpaper.png'))-eq 'user-custom-wallpaper') 'in-folder updater preserves user custom assets'
+
 $result=@{result='passed';checks=$script:Checks.ToArray();count=$script:Checks.Count;fixtures=$testRoot;realActivation='mocked';realFiles='isolated temporary fixtures'}
-$result|ConvertTo-Json -Depth 5|Set-Content -LiteralPath (Join-Path $testRoot 'result.json') -Encoding UTF8
-$result|ConvertTo-Json -Depth 5
+$jsonOut=$result|ConvertTo-Json -Depth 5
+Remove-Item -LiteralPath $testRoot -Recurse -Force -ErrorAction SilentlyContinue
+$jsonOut

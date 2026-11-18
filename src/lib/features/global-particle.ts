@@ -1,4 +1,4 @@
-import { logger } from '@/index'
+import { logger } from '@/lib/logger'
 import { injector } from '@/lib/InjectorManager'
 import { modalStack, startParticleAnimation } from '@/lib/particle-animation'
 

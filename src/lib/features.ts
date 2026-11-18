@@ -5,9 +5,10 @@
  * 在 index.tsx 的 load() 中调用 initFeatures() 即可。
  */
 
-import { logger } from '@/index'
+import { logger } from '@/lib/logger'
 import { store } from '@/lib/store'
 import { lcu, LcuEventUri, queueIdToTag } from '@/lib/lcu'
+import { resolveCanonicalQueueId } from '@/lib/assets'
 import type { LCUEventMessage, GameflowPhase, ChampSelectSession } from '@/lib/lcu'
 import { injector } from '@/lib/InjectorManager'
 import { sleep } from '@/lib/utils'
@@ -19,6 +20,12 @@ import { updateHideEsportsPopup } from '@/lib/features/hide-esports-popup'
 import { updateDebugGameflow } from '@/lib/features/debug-gameflow'
 import { updateUnlockStatus } from '@/lib/features/unlock-status'
 import { updateBenchNoCooldown } from '@/lib/features/bench-no-cooldown'
+import { refreshAramBenchAssist } from '@/lib/features/aram-bench-assist'
+import { updateAutoAcceptSwap } from '@/lib/features/auto-accept-swap'
+import { updateAutoRandomSkin } from '@/lib/features/auto-random-skin'
+import { updateChampSelectCompDiagnostic } from '@/lib/features/champselect-comp-diagnostic'
+import { refreshChampSelectTagAlert } from '@/lib/features/champselect-tag-alert'
+import { refreshPostgameEnhancement } from '@/lib/features/postgame-enhancement'
 import { updateGlobalParticle } from '@/lib/features/global-particle'
 import { updateFriendSmartGroup } from '@/lib/features/friend-smart-group'
 import { updateEnhancedFriendGameStatus } from '@/lib/features/enhanced-friend-game-status'
@@ -138,8 +145,8 @@ async function _doFetchTeamStats(): Promise<TeamStatsResult> {
   const localPlayer = session.myTeam.find((p) => p.cellId === session.localPlayerCellId)
   const isBlue = localPlayer ? localPlayer.cellId < 5 : true
 
-  // 直接从 ChampSelectSession 拿 queueId，无需额外请求
-  const currentQueueId = session.queueId
+  // 直接从 ChampSelectSession 拿 queueId，若是自定义房间衍生队列自动归一到标准匹配队列
+  const currentQueueId = resolveCanonicalQueueId(session.queueId)
   logger.info('[TeamStats] 当前队列 ID: %d', currentQueueId)
 
   // 将 queueId 转为 SGP tag
@@ -1228,6 +1235,34 @@ export function initFeatures() {
   updateAutoBanChampion(store.get('autoBanChampion'))
   store.onChange('autoBanChampion', updateAutoBanChampion)
   store.onChange('autoBanChampionIds', () => updateAutoBanChampion(store.get('autoBanChampion')))
+  store.onChange('champSelectPresetSwitch', () => {
+    updateAutoBanChampion(store.get('autoBanChampion'))
+  })
+  store.onChange('champSelectPresets', () => {
+    updateAutoBanChampion(store.get('autoBanChampion'))
+  })
+
+  refreshChampSelectTagAlert()
+  store.onChange('champSelectTagAlert', refreshChampSelectTagAlert)
+  store.onChange('playerTagEnabled', refreshChampSelectTagAlert)
+
+  updateAutoRandomSkin(store.get('autoRandomSkin'))
+  store.onChange('autoRandomSkin', updateAutoRandomSkin)
+
+  updateAutoAcceptSwap(store.get('autoAcceptSwap'))
+  store.onChange('autoAcceptSwap', updateAutoAcceptSwap)
+
+  refreshPostgameEnhancement()
+  store.onChange('postgameEnhancement', refreshPostgameEnhancement)
+
+  updateChampSelectCompDiagnostic(store.get('champSelectCompDiagnostic'))
+  store.onChange('champSelectCompDiagnostic', updateChampSelectCompDiagnostic)
+
+  refreshAramBenchAssist()
+  store.onChange('aramWishlistEnabled', refreshAramBenchAssist)
+  store.onChange('aramWishlistChampionIds', refreshAramBenchAssist)
+  store.onChange('aramWishlistAutoSwap', refreshAramBenchAssist)
+  store.onChange('aramBenchTeammateHint', refreshAramBenchAssist)
 
   updateBalanceBuffTooltip(store.get('balanceBuffTooltip'))
   store.onChange('balanceBuffTooltip', updateBalanceBuffTooltip)

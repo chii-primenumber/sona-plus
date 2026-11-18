@@ -6,7 +6,7 @@
  * 跟随“英雄选择阶段增强”开关启用。
  */
 
-import { logger } from '@/index'
+import { logger } from '@/lib/logger'
 import { injector } from '@/lib/InjectorManager'
 import { getQueue } from '@/lib/assets'
 import { lcu, LcuEventUri, type ChampSelectSession, type LCUEventMessage } from '@/lib/lcu'

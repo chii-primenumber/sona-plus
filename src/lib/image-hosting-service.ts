@@ -1,3 +1,5 @@
+import { DEFAULT_CORS_PROXY_URL, getCorsProxyCandidates } from '@/lib/cors-proxy'
+
 function decodeImageHostConfig(encodedValue: string): string {
   const binary = atob(encodedValue)
   const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0))
@@ -12,7 +14,7 @@ const MAX_IMAGE_SIZE = 50 * 1024 * 1024
 const IMAGE_HOST_WEB_ORIGIN = decodeImageHostConfig('aHR0cHM6Ly93ZWJzdGF0aWMubWlob3lvZ2lmdC5jb20=')
 const IMAGE_HOST_WEB_REFERER = `${IMAGE_HOST_WEB_ORIGIN}/`
 const IMAGE_HOST_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/147.0.0.0'
-const CORS_PROXY_URL = decodeImageHostConfig('aHR0cHM6Ly9jb3JzcHJveHkuaW8v')
+const CORS_PROXY_URL = DEFAULT_CORS_PROXY_URL
 
 /**
  * 图床服务的登录凭据。日志和返回结果严禁包含该值。
@@ -73,12 +75,7 @@ function getHeaderAcceptance(request: Request): Record<string, boolean> {
  * corsproxy.io 的 reqHeaders 参数会在代理服务器请求目标地址前覆盖这些请求头。
  */
 function buildCorsProxyUrl(targetUrl: string, requestHeaders: Record<string, string> = {}): string {
-  const proxyUrl = new URL(CORS_PROXY_URL)
-  proxyUrl.searchParams.set('url', targetUrl)
-  Object.entries(requestHeaders).forEach(([name, value]) => {
-    proxyUrl.searchParams.append('reqHeaders', `${name}:${value}`)
-  })
-  return proxyUrl.toString()
+  return getCorsProxyCandidates(targetUrl, requestHeaders)[0]
 }
 
 function rotateLeft(value: number, shift: number): number {

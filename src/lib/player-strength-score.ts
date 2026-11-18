@@ -1,4 +1,4 @@
-import type { SgpGameSummaryLol, SgpParticipantLol } from '@/types/sgp'
+import { isMatchingQueue, type SgpGameSummaryLol, type SgpParticipantLol } from '@/types/sgp'
 import { translate } from '@/i18n'
 
 export type SonaStrengthRole =
@@ -309,7 +309,7 @@ export function filterSonaStrengthGamesByQueue(
 
   const queueTag = `q_${queueId}`
   return games.filter((game) => {
-    return game.json.queueId === queueId || game.metadata.tags?.includes(queueTag)
+    return isMatchingQueue(game, queueId) || game.metadata.tags?.includes(queueTag)
   })
 }
 

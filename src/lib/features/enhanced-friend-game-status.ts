@@ -1,4 +1,4 @@
-import { logger } from '@/index'
+import { logger } from '@/lib/logger'
 import { getQueueName } from '@/lib/assets'
 import { injector } from '@/lib/InjectorManager'
 import { lcu } from '@/lib/lcu'

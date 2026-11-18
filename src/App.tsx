@@ -1,16 +1,11 @@
 import {UpdatePushNotice} from '@/components/ui/UpdatePushNotice'
-import { useState, useEffect, useMemo } from 'react'
+import { lazy, Suspense, useState, useEffect, useMemo } from 'react'
 import '@/styles/App.css'
-import { logger } from '.'
+import { logger } from '@/lib/logger'
 import { Modal } from '@/components/ui/Modal'
 import { Sidebar, type SidebarItem } from '@/components/ui/Sidebar'
 import { HomePage } from '@/components/pages/HomePage'
-import { ToolsPage } from '@/components/pages/ToolsPage'
-import { BeautifyPage } from '@/components/pages/BeautifyPage'
 import { SettingsPage } from '@/components/pages/SettingsPage'
-import { AboutPage } from '@/components/pages/AboutPage'
-import { RewardsPage } from '@/components/pages/RewardsPage'
-import { DebugPage } from '@/components/pages/DebugPage'
 import { UpdatePage } from '@/components/pages/UpdatePage'
 import { HomeIcon, GamepadIcon, PaletteIcon, SettingsIcon, InfoIcon, BugIcon, ZapIcon, GiftIcon } from '@/components/ui/icons'
 import { onModalVisibilityChange, isModalVisible, closeModal, openModal } from '@/lib/modal'
@@ -18,6 +13,12 @@ import { store } from '@/lib/store'
 import { checkUpdatesInBackground, getUpdateState, onUpdateStateChange, type UpdateState } from '@/lib/update-checker'
 import { useI18n } from '@/i18n'
 import type { TranslationKey } from '@/i18n'
+
+const ToolsPage = lazy(() => import('@/components/pages/ToolsPage').then((m) => ({ default: m.ToolsPage })))
+const BeautifyPage = lazy(() => import('@/components/pages/BeautifyPage').then((m) => ({ default: m.BeautifyPage })))
+const RewardsPage = lazy(() => import('@/components/pages/RewardsPage').then((m) => ({ default: m.RewardsPage })))
+const AboutPage = lazy(() => import('@/components/pages/AboutPage').then((m) => ({ default: m.AboutPage })))
+const DebugPage = lazy(() => import('@/components/pages/DebugPage').then((m) => ({ default: m.DebugPage })))
 
 const baseSidebarItemConfigs: Array<Omit<SidebarItem, 'label'> & { labelKey: TranslationKey }> = [
   { id: 'home', icon: <HomeIcon />, labelKey: 'nav.home' },
@@ -59,10 +60,17 @@ function PageContent({ pageId }: { pageId: string }) {
   }
 }
 
+function hasUnhandledUpdate(state: UpdateState = getUpdateState()): boolean {
+  if (state.status !== 'available' || !state.info?.latestVersion) return false
+  const latestVersion = state.info.latestVersion
+  return store.get('dismissedUpdateNotice') !== latestVersion
+    && store.get('readAnnouncementVersion') !== latestVersion
+}
+
 export function App() {
   const { t } = useI18n()
   const [visible, setVisible] = useState(isModalVisible())
-  const [activePageId, setActivePageId] = useState(() => (getUpdateState().status === 'available' ? 'update' : 'home'))
+  const [activePageId, setActivePageId] = useState(() => (hasUnhandledUpdate() ? 'update' : 'home'))
   const [sidebarCollapsed, setSidebarCollapsed] = useState(store.get('sidebarCollapsed'))
   const [devMode, setDevMode] = useState(store.get('developerMode'))
   const [updateState, setUpdateState] = useState<UpdateState>(() => getUpdateState())
@@ -72,8 +80,8 @@ export function App() {
       const rootConnected = Boolean(document.getElementById('sona-root')?.isConnected)
       logger.debug('Modal visibility changed: %s (root in DOM: %s)', String(v), String(rootConnected))
       setVisible(v)
-      if(v)checkUpdatesInBackground()
-      if (v && getUpdateState().status === 'available') {
+      if (v) checkUpdatesInBackground()
+      if (v && hasUnhandledUpdate()) {
         setActivePageId('update')
       }
     })
@@ -93,9 +101,8 @@ export function App() {
   useEffect(() => {
     return onUpdateStateChange((state) => {
       setUpdateState(state)
-
     })
-  }, [activePageId])
+  }, [])
 
   // 动态构建侧边栏项目
   const sidebarItems = useMemo(() => {
@@ -139,7 +146,9 @@ export function App() {
           onToggle={handleToggleSidebar}
         />
         <div className="sona-content">
-          <PageContent pageId={activePageId} />
+          <Suspense fallback={<div className="sona-settings" style={{ opacity: 0.7 }}>加载中…</div>}>
+            <PageContent pageId={activePageId} />
+          </Suspense>
         </div>
       </div>
     </Modal>

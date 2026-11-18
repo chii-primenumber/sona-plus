@@ -1,6 +1,7 @@
 import { initScrollbarVisibility } from '@/lib/scrollbar-visibility'
 import { store } from '@/lib/store'
 import '@/styles/Theme.css'
+import '@/styles/PersonalHistory.css'
 import '@/styles/ClientSurfaces.css'
 
 export type SonaTheme = 'client'

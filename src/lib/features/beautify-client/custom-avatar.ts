@@ -1,5 +1,5 @@
 import { injector } from '@/lib/InjectorManager'
-import { logger } from '@/index'
+import { logger } from '@/lib/logger'
 import { lcu, LcuEventUri } from '@/lib/lcu'
 import { resolvePluginAssetUrl } from '@/lib/plugin-resolver'
 import { store } from '@/lib/store'

@@ -1,10 +1,8 @@
+import { getCorsProxyCandidates } from '@/lib/cors-proxy'
+
 export const SONA_SERVICE_BASE_URL = 'https://sona-service.vercel.app'
 export const SONA_SERVICE_CLIENT_HEADER = 'X-Sona-Client'
 export const SONA_SERVICE_CLIENT_HEADER_PREFIX = '­­­­­­­­­­­­­­­­­­­­­­­­­­­­­­­­'
-
-function wrapCorsProxy(targetUrl: string): string {
-  return `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`
-}
 
 interface SonaAvatarResponse {
   ok: boolean
@@ -32,14 +30,26 @@ export function createSonaServiceHeaders(headers?: HeadersInit): Headers {
   return nextHeaders
 }
 
-export function fetchSonaService(input: RequestInfo | URL, init: RequestInit = {}) {
-  const proxiedInput = typeof input === 'string' || input instanceof URL
-    ? wrapCorsProxy(String(input))
-    : input
+export async function fetchSonaService(input: RequestInfo | URL, init: RequestInit = {}) {
+  const headers = createSonaServiceHeaders(init.headers)
+  if (typeof input === 'string' || input instanceof URL) {
+    const candidates = getCorsProxyCandidates(String(input))
+    let lastError: unknown = null
+    for (let i = 0; i < candidates.length; i += 1) {
+      try {
+        const res = await fetch(candidates[i], { ...init, headers })
+        if (res.ok || res.status === 404 || i === candidates.length - 1) return res
+      } catch (err) {
+        lastError = err
+        if (i === candidates.length - 1) throw err
+      }
+    }
+    if (lastError) throw lastError
+  }
 
-  return fetch(proxiedInput, {
+  return fetch(input, {
     ...init,
-    headers: createSonaServiceHeaders(init.headers),
+    headers,
   })
 }
 

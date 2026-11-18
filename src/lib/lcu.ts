@@ -42,7 +42,7 @@ import type {
   RewardsGrant,
 } from '@/types/lcu'
 import { SGP_SERVERS, TENCENT_MATCH_HISTORY_INTEROP } from '@/types/sgp'
-import type { SgpEntitlementsToken, SgpGameSummaryLol, SgpMatchHistoryLol, SgpParticipantLol, SgpPerks, SgpTeam } from '@/types/sgp'
+import { isMatchingQueue, type SgpEntitlementsToken, type SgpGameSummaryLol, type SgpMatchHistoryLol, type SgpParticipantLol, type SgpPerks, type SgpTeam } from '@/types/sgp'
 import { deobfuscateChampSelectPuuid } from '@/lib/champ-select-puuid'
 import { store } from '@/lib/store'
 import { SharedRequests, clearHistoryRequests } from './shared-requests'
@@ -53,7 +53,7 @@ const historySessionRequests = new SharedRequests(2, 8)
 export type { SummonerInfo, LobbyConfig, Lobby, GameflowPhase, GameflowSession, LCUEventMessage, ChatConversation, ChatMessage, ChatMe, Availability, SendChatMessageBody, ReadyCheck, ChampSelectSession, ChampSelectPlayerDetail, MatchHistoryResponse, MatchDetail, ChatFriend, SpectatorLaunchPayload, ChampSelectSummoner, RewardsGrant }
 export type { RewardItem, RewardGroup, RewardGrantInfo, RewardSelectionStrategyConfig } from '@/types/lcu'
 export type { SgpEntitlementsToken, SgpMatchHistoryLol } from '@/types/sgp'
-export { SGP_SERVERS, TENCENT_MATCH_HISTORY_INTEROP, TENCENT_SERVER_NAMES, queueIdToTag } from '@/types/sgp'
+export { SGP_SERVERS, TENCENT_MATCH_HISTORY_INTEROP, TENCENT_SERVER_NAMES, isMatchingQueue, queueIdToTag } from '@/types/sgp'
 
 export { LcuEventUri, QueueId } from '@/types/lcu'
 
@@ -1197,6 +1197,31 @@ class LCUManager {
     return patch('/lol-rewards/v1/grants/view', grantIds)
   }
 
+  // ==================== 海克斯战利品（Loot） ====================
+
+  async getPlayerLootMap(): Promise<Record<string, Record<string, unknown>>> {
+    try {
+      const map = await get<Record<string, Record<string, unknown>>>('/lol-loot/v1/player-loot-map')
+      if (map && typeof map === 'object' && !Array.isArray(map)) return map
+    } catch {
+      // fallback to player-loot array
+    }
+    const list = await get<Array<Record<string, unknown>>>('/lol-loot/v1/player-loot')
+    const out: Record<string, Record<string, unknown>> = {}
+    if (Array.isArray(list)) {
+      for (const item of list) {
+        const id = typeof item?.lootId === 'string' ? item.lootId : ''
+        if (id) out[id] = item
+      }
+    }
+    return out
+  }
+
+  craftLootRecipe(recipeName: string, lootIds: string[], repeat = 1): Promise<unknown> {
+    const safeRepeat = Math.max(1, Math.floor(repeat))
+    return post(`/lol-loot/v1/recipes/${encodeURIComponent(recipeName)}/craft?repeat=${safeRepeat}`, lootIds)
+  }
+
   // ==================== SGP Token ====================
 
   /**
@@ -1368,31 +1393,106 @@ class LCUManager {
         throw new Error(`[SGP] 找不到服务器配置: ${sgpServerId}`)
       }
 
-      const params = new URLSearchParams()
-      params.set('startIndex', String(options?.startIndex ?? 0))
-      params.set('count', String(options?.count ?? 100))
-      if (options?.tag) {
-        params.set('tag', options.tag)
+      const requestedStart = Math.max(0, options?.startIndex ?? 0)
+      const requestedCount = Math.max(1, options?.count ?? 100)
+      const targetQueueId = this.parseQueueIdFromSgpTag(options?.tag)
+      const PAGE_CAP_SIZES = new Set([10, 15, 20, 25, 50])
+
+      const fetchSgpBatch = async (startIdx: number, batchCount: number, tagValue?: string): Promise<SgpGameSummaryLol[]> => {
+        const params = new URLSearchParams()
+        params.set('startIndex', String(startIdx))
+        params.set('count', String(batchCount))
+        if (tagValue) {
+          params.set('tag', tagValue)
+        }
+        const url = `${server.matchHistory}/match-history-query/v1/products/lol/player/${encodeURIComponent(puuid)}/SUMMARY?${params}`
+        debugContext.requestUrl = url
+        const resp = await fetch(url, {
+          signal: options?.signal,
+          headers: {
+            'Authorization': `Bearer ${token.accessToken}`,
+            'User-Agent': 'LeagueOfLegendsClient/14.13.596.7996 (rcp-be-lol-match-history)',
+          },
+        })
+        if (!resp.ok) {
+          const body = await resp.text().catch(() => '')
+          throw new Error(`[SGP] 请求失败: ${resp.status} ${resp.statusText} ${body.slice(0, 1000)}`)
+        }
+        const data = await resp.json() as SgpMatchHistoryLol
+        return Array.isArray(data?.games) ? data.games : []
       }
 
-      const url = `${server.matchHistory}/match-history-query/v1/products/lol/player/${encodeURIComponent(puuid)}/SUMMARY?${params}`
-      debugContext.requestUrl = url
-
-      const resp = await fetch(url, {
-        signal: options?.signal,
-        headers: {
-          'Authorization': `Bearer ${token.accessToken}`,
-          'User-Agent': 'LeagueOfLegendsClient/14.13.596.7996 (rcp-be-lol-match-history)',
-        },
-      })
-
-      if (!resp.ok) {
-        const body = await resp.text().catch(() => '')
-        throw new Error(`[SGP] 请求失败: ${resp.status} ${resp.statusText} ${body.slice(0, 1000)}`)
+      const seenGameIds = new Set<string>()
+      const gameKey = (g: SgpGameSummaryLol): string => {
+        const gid = g?.json?.gameId
+        return gid != null && gid !== 0 ? String(gid) : `${g?.metadata?.match_id || Math.random()}`
+      }
+      const collected: SgpGameSummaryLol[] = []
+      const pushUnique = (items: SgpGameSummaryLol[], filterQueue = false): number => {
+        let added = 0
+        for (const item of items) {
+          if (!item?.json) continue
+          if (filterQueue && targetQueueId && !isMatchingQueue(item, targetQueueId)) continue
+          const k = gameKey(item)
+          if (seenGameIds.has(k)) continue
+          seenGameIds.add(k)
+          collected.push(item)
+          added += 1
+        }
+        return added
       }
 
-      const result = await resp.json() as SgpMatchHistoryLol
-      return { ...result, sonaSource: 'sgp' }
+      const firstBatch = await fetchSgpBatch(requestedStart, requestedCount, options?.tag)
+      const hadNonTargetQueue = Boolean(
+        targetQueueId && firstBatch.some((g) => !isMatchingQueue(g, targetQueueId)),
+      )
+      pushUnique(firstBatch, Boolean(targetQueueId))
+
+      if (!hadNonTargetQueue) {
+        let cursor = requestedStart + firstBatch.length
+        let lastLen = firstBatch.length
+        let pages = 1
+        while (
+          collected.length < requestedCount
+          && lastLen > 0
+          && (PAGE_CAP_SIZES.has(lastLen) || lastLen >= requestedCount)
+          && pages < 10
+        ) {
+          const remaining = Math.max(20, requestedCount - collected.length)
+          const nextBatch = await fetchSgpBatch(cursor, remaining, options?.tag)
+          pages += 1
+          if (nextBatch.length === 0) break
+          cursor += nextBatch.length
+          lastLen = nextBatch.length
+          const added = pushUnique(nextBatch, Boolean(targetQueueId))
+          if (added === 0) break
+        }
+      }
+
+      if (
+        targetQueueId
+        && requestedStart === 0
+        && collected.length < requestedCount
+        && hadNonTargetQueue
+      ) {
+        let rawCursor = firstBatch.length
+        const maxRawScan = Math.max(200, requestedCount * 3)
+        let scanPages = 0
+        while (collected.length < requestedCount && rawCursor < maxRawScan && scanPages < 6) {
+          const rawBatch = await fetchSgpBatch(rawCursor, 100, undefined)
+          scanPages += 1
+          if (rawBatch.length === 0) break
+          rawCursor += rawBatch.length
+          pushUnique(rawBatch, true)
+          if (rawBatch.length < 100 && !PAGE_CAP_SIZES.has(rawBatch.length)) break
+        }
+      }
+
+      if (targetQueueId && collected.length > 1) {
+        collected.sort((a, b) => (b.json?.gameCreation ?? 0) - (a.json?.gameCreation ?? 0))
+      }
+
+      return { games: collected.slice(0, requestedCount), sonaSource: 'sgp' }
     } catch (err) {
       if (options?.signal?.aborted || options?.serverId) throw err
       console.error('[SGP] 战绩查询失败，回退到客户端原生战绩接口', {
@@ -1431,7 +1531,7 @@ class LCUManager {
     const native = await this.getMatchHistory(puuid, begIndex, endIndex, options?.signal)
     const nativeGames = native.games?.games ?? []
     const filteredGames = queueId
-      ? nativeGames.filter((game) => game.queueId === queueId).slice(startIndex, startIndex + count)
+      ? nativeGames.filter((game) => isMatchingQueue({ json: game }, queueId)).slice(startIndex, startIndex + count)
       : nativeGames
 
     return {
@@ -2040,6 +2140,34 @@ class LCUManager {
     }
   }
 
+
+  /** E4：获取选人阶段当前英雄皮肤与炫彩轮播列表 */
+  getSkinCarouselSkins(): Promise<import('./champselect-enhancements').LcuSkinCarouselItem[]> {
+    return get<import('./champselect-enhancements').LcuSkinCarouselItem[]>('/lol-champ-select/v1/skin-carousel-skins')
+  }
+
+  /** E4：切换选人阶段当前选中的皮肤 / 炫彩 ID */
+  async setSelectedSkinId(selectedSkinId: number): Promise<boolean> {
+    await patch('/lol-champ-select/v1/session/my-selection', { selectedSkinId })
+    return true
+  }
+
+  /** E5：同意英雄交换请求 */
+  async acceptChampSelectTrade(tradeId: number): Promise<boolean> {
+    await post(`/lol-champ-select/v1/session/trades/${tradeId}/accept`)
+    return true
+  }
+
+  /** E5：同意排位楼层互换请求 */
+  async acceptPickOrderSwap(swapId: number): Promise<boolean> {
+    await post(`/lol-champ-select/v1/session/swaps/${swapId}/accept`)
+    return true
+  }
+
+  /** E2：获取赛后结算统计数据块 */
+  getEogStatsBlock(): Promise<import('./postgame-intel').LcuEogStatsBlock | null> {
+    return get<import('./postgame-intel').LcuEogStatsBlock>('/lol-end-of-game/v1/eog-stats-block').catch(() => null)
+  }
 
   /**
    * 断开所有 WebSocket 事件监听

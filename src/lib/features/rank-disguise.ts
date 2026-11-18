@@ -1,4 +1,4 @@
-import { logger } from '@/index'
+import { logger } from '@/lib/logger'
 import { store } from '@/lib/store'
 
 // ==================== 段位伪装 ====================

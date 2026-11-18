@@ -397,6 +397,23 @@ export function queueIdToTag(queueId: number): string {
   return queueId > 0 ? `q_${queueId}` : ''
 }
 
+export function isKiwiQueueId(queueId: number): boolean {
+  return queueId >= 2400 && queueId <= 2409
+}
+
+export function isMatchingQueue(
+  game: { json?: { queueId?: number; gameMode?: string; gameType?: string } } | null | undefined,
+  targetQueueId: number,
+): boolean {
+  if (!Number.isFinite(targetQueueId) || targetQueueId <= 0) return true
+  const qid = game?.json?.queueId ?? 0
+  if (qid === targetQueueId) return true
+  if (isKiwiQueueId(targetQueueId) && qid > 0 && game?.json?.gameType !== 'CUSTOM_GAME') {
+    return isKiwiQueueId(qid) || String(game?.json?.gameMode || '').toUpperCase() === 'KIWI'
+  }
+  return false
+}
+
 /** 国服大区中文名映射 */
 export const TENCENT_SERVER_NAMES: Record<string, string> = {
   TENCENT_HN1: '艾欧尼亚',

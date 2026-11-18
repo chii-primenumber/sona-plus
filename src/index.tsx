@@ -3,7 +3,7 @@ declare const __PLUGIN_VERSION__: string  //  这个变量信息在vite.config.j
 
 import { createRoot } from 'react-dom/client'
 import { App } from '@/App'
-import { createLogger } from '@/lib/logger'
+import { logger } from '@/lib/logger'
 import { registerAllInjections } from '@/lib/injections'
 import { initFeatures } from '@/lib/features'
 import { registerHotkey } from '@/lib/modal'
@@ -23,14 +23,9 @@ import '@/styles/inject.css'
 import '@/styles/availabilityMenu.css'
 import '@/styles/gameModeFilter.css'
 
-const PLUGIN_NAME = 'Sona Plus'
-const PLUGIN_VERSION = __PLUGIN_VERSION__
 const CONTAINER_ID = 'sona-root'
 
-export const logger = createLogger({
-  name: PLUGIN_NAME,
-  version: PLUGIN_VERSION,
-})
+export { logger }
 
 function getRuntime(): SonaRuntime {
   if (!window.__SONA_RUNTIME__) {

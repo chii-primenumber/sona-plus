@@ -106,14 +106,28 @@ function penguBuild(): Plugin {
         fs.unlinkSync(htmlPath)
       }
 
-      // Process index.js - patch asset paths and wrap in load listener
+      // Patch asset paths in index.js and any code-split chunks
+      const patchPluginJsAssets = (filePath: string) => {
+        let content = fs.readFileSync(filePath, 'utf-8')
+        content = content.replaceAll('"/assets/', `"//plugins/${PLUGIN_NAME}/assets/`)
+        content = content.replaceAll("'/assets/", `'//plugins/${PLUGIN_NAME}/assets/`)
+        fs.writeFileSync(filePath, content)
+      }
+
+      const chunksDir = path.join(outDir, 'chunks')
+      if (fs.existsSync(chunksDir)) {
+        for (const entry of fs.readdirSync(chunksDir)) {
+          if (entry.endsWith('.js')) {
+            patchPluginJsAssets(path.join(chunksDir, entry))
+          }
+        }
+      }
+
+      // Process index.js - patch asset paths and prepend CSS + Pengu metadata banner
       const jsPath = path.join(outDir, 'index.js')
       if (fs.existsSync(jsPath)) {
+        patchPluginJsAssets(jsPath)
         let js = fs.readFileSync(jsPath, 'utf-8')
-
-        // Fix asset paths: /assets/ -> //plugins/sona/assets/
-        js = js.replaceAll('"/assets/', `"//plugins/${PLUGIN_NAME}/assets/`)
-        js = js.replaceAll("'/assets/", `'//plugins/${PLUGIN_NAME}/assets/`)
 
         // Add CSS import at top
         js = `import "./index.css";\n${js}`
@@ -174,6 +188,7 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
+    cssCodeSplit: false,
     lib: {
       entry: path.resolve(__dirname, 'src/index.tsx'),
       formats: ['es'],
@@ -181,7 +196,7 @@ export default defineConfig({
     },
     rollupOptions: {
       output: {
-        manualChunks: undefined,
+        chunkFileNames: 'chunks/[name]-[hash].js',
         assetFileNames: (assetInfo) => {
           if (assetInfo.names?.[0]?.endsWith('.css')) return 'index.css'
           return 'assets/[name]-[hash][extname]'

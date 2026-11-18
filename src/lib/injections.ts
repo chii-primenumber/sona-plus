@@ -9,7 +9,7 @@
  * 2. 在 registerAllInjections() 中 injector.register(tryInjectXxx)
  */
 
-import { logger } from '@/index'
+import { logger } from '@/lib/logger'
 import { injector } from '@/lib/InjectorManager'
 import { store } from '@/lib/store'
 import { openModal, onModalVisibilityChange } from '@/lib/modal'

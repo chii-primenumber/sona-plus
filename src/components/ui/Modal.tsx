@@ -47,26 +47,24 @@ export function Modal({
   const closeBtnRef = useRef<HTMLButtonElement>(null)
   const mouseDownOnOverlayRef = useRef(false)
   const lastCloseAtRef = useRef(0)
-  const [mounted, setMounted] = useState(false)
-  const [closing, setClosing] = useState(false)
+  const [mounted, setMounted] = useState(open)
 
-  // 控制挂载/卸载：open 为 true 时立即挂载，关闭时等动画结束再卸载
+  const activeMounted = open || mounted
+  const activeClosing = !open && mounted
+
+  // 控制挂载/卸载：open 为 true 时首帧直接挂载，关闭时等动画结束再卸载
   useEffect(() => {
-    if (open) {
+    if (open && !mounted) {
       setMounted(true)
-      setClosing(false)
-    } else if (mounted) {
-      setClosing(true)
     }
-  }, [open])
+  }, [open, mounted])
 
   // 监听退出动画结束后真正卸载
   useEffect(() => {
-    if (!closing) return
+    if (!activeClosing) return
     const overlay = overlayRef.current
     const finish = () => {
       setMounted(false)
-      setClosing(false)
     }
     if (!overlay) {
       finish()
@@ -83,7 +81,7 @@ export function Modal({
       overlay.removeEventListener('animationend', onEnd)
       window.clearTimeout(fallbackTimer)
     }
-  }, [closing])
+  }, [activeClosing])
 
   /** 统一的关闭入口：同一次点击可能从多条路径进来，用时间窗去重 */
   const requestClose = useCallback(() => {
@@ -113,7 +111,7 @@ export function Modal({
       btn.removeEventListener('pointerdown', handleNative, true)
       btn.removeEventListener('click', handleNative, true)
     }
-  }, [requestClose, mounted, closable])
+  }, [requestClose, activeMounted, closable])
 
   // ESC 关闭
   useEffect(() => {
@@ -126,13 +124,13 @@ export function Modal({
   }, [open, requestClose])
 
   useEffect(() => {
-    if (!mounted || closing || !dynamicEffects || !canvasRef.current) return
+    if (!activeMounted || activeClosing || !dynamicEffects || !canvasRef.current) return
     return startParticleAnimation(canvasRef.current, 80, () => modalStack[modalStack.length - 1] === modalId.current)
-  }, [mounted, closing, dynamicEffects])
+  }, [activeMounted, activeClosing, dynamicEffects])
 
   // 打开时阻止背景滚动
   useEffect(() => {
-    if (!open || !mounted || closing) return
+    if (!open || !activeMounted || activeClosing) return
     const id = modalId.current
     if (!modalStack.length) initialBodyOverflow = document.body.style.overflow
     modalStack.push(id)
@@ -144,17 +142,17 @@ export function Modal({
       notifyModalStack()
       if (!modalStack.length) document.body.style.overflow = initialBodyOverflow
     }
-  }, [open, mounted, closing])
+  }, [open, activeMounted, activeClosing])
 
-  if (!mounted) return null
+  if (!activeMounted) return null
 
   const style = {
     width: typeof width === 'number' ? `${width}px` : width,
     height: typeof height === 'number' ? `${height}px` : height,
   }
 
-  const overlayClass = `sona-modal-overlay${closing ? ' sona-modal-closing' : ''}`
-  const dialogClass = `sona-modal-dialog${careerBackground ? ' sona-modal-dialog--career' : ''}${closing ? ' sona-modal-closing' : ''}`
+  const overlayClass = `sona-modal-overlay${activeClosing ? ' sona-modal-closing' : ''}`
+  const dialogClass = `sona-modal-dialog${careerBackground ? ' sona-modal-dialog--career' : ''}${activeClosing ? ' sona-modal-closing' : ''}`
 
   const handleOverlayMouseDown = (e: MouseEvent<HTMLDivElement>) => {
     mouseDownOnOverlayRef.current = e.target === e.currentTarget
@@ -186,7 +184,7 @@ export function Modal({
         style={style}
         onClick={(e) => e.stopPropagation()}
       >
-        {careerBackground && <CareerBackdrop active={open && !closing} />}
+        {careerBackground && <CareerBackdrop active={open && !activeClosing} />}
         {/* Canvas 粒子背景 */}
         <canvas
           ref={canvasRef}

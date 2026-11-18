@@ -1,8 +1,8 @@
-import { logger } from '@/index'
+import { logger } from '@/lib/logger'
 
 type InjectTask = () => boolean
 interface InjectOptions { selector?: string }
-const OWNED = '#sona-root, .sona-modal-overlay, .rh-asset-tooltip, #sona-opgg-build-panel'
+const OWNED = '#sona-root, .sona-modal-overlay, .rh-asset-tooltip, #sona-opgg-build-panel, [data-sona-owned], #sona-native-comp-diagnostic-host, #sona-aram-bench-assist-tooltip, [data-sona-bench-wish-badge], [data-sona-bench-mate-badge], [data-sona-tier-badge], #sona-champselect-tag-alert, [data-sona-postgame-badge]'
 
 /** Batch native changes; plugin contents do not trigger another pass through native injection tasks. */
 export class InjectorManager {

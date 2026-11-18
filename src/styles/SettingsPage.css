@@ -821,8 +821,8 @@
 .sona-champ-priority-card {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  max-width: 240px;
+  gap: 7px;
+  max-width: 268px;
   padding: 8px 10px;
   background: rgb(var(--sona-raised-rgb) / 0.4);
   border: 1px solid rgb(var(--sona-accent-rgb) / 0.1);
@@ -865,6 +865,7 @@
   font-size: 12px;
 }
 
+.sona-champ-priority-move,
 .sona-champ-priority-remove {
   width: 22px;
   height: 22px;
@@ -875,7 +876,14 @@
   color: rgb(var(--sona-muted-rgb));
   line-height: 20px;
   cursor: pointer;
+  flex-shrink: 0;
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.sona-champ-priority-move:hover {
+  background: rgb(var(--sona-accent-rgb) / 0.22);
+  border-color: rgb(var(--sona-accent-rgb) / 0.45);
+  color: rgb(var(--sona-accent-rgb));
 }
 
 .sona-champ-priority-remove:hover {

@@ -1,4 +1,4 @@
-import { logger } from '@/index'
+import { logger } from '@/lib/logger'
 import { injector } from '@/lib/InjectorManager'
 
 // ==================== 解锁自定义签名 ====================

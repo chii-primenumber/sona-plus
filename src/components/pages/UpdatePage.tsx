@@ -1,6 +1,7 @@
 import { store } from '@/lib/store'
 import { useEffect, useState } from 'react'
 import { SonaButton } from '@/components/ui/SonaButton'
+import { getPluginFolderPath } from '@/lib/plugin-resolver'
 import { checkForUpdates, getReleaseAnnouncement, getReleasePageUrl, getUpdateState, onUpdateStateChange, skipUpdateVersion, type UpdateState } from '@/lib/update-checker'
 import { useI18n } from '@/i18n'
 import '@/styles/UpdatePage.css'
@@ -19,6 +20,7 @@ function formatPublishedDate(value: string): string {
 export function UpdatePage() {
   const { t } = useI18n()
   const [updateState, setUpdateState] = useState<UpdateState>(() => getUpdateState())
+  const [folderHint, setFolderHint] = useState('')
   const info = updateState.info ?? getReleaseAnnouncement()
   useEffect(()=>{if(info)store.set('readAnnouncementVersion',info.latestVersion)},[info?.latestVersion])
 
@@ -27,6 +29,26 @@ export function UpdatePage() {
   const openUrl = (url: string) => {
     if (!url) return
     window.open(url, '_blank')
+  }
+
+  const openUpdaterFolder = () => {
+    const folder = getPluginFolderPath()
+    if (typeof window.openPluginsFolder === 'function') {
+      window.openPluginsFolder(folder)
+      setFolderHint(`已打开插件目录（${folder}）。无需退出客户端，直接双击「双击更新SonaPlus.cmd」替换文件后，按 Ctrl+Enter 或点击「重载客户端生效」即可！`)
+    } else {
+      setFolderHint(`请在 Pengu Loader 插件目录的 ${folder} 文件夹中双击「双击更新SonaPlus.cmd」，完成后回到客户端按 Ctrl+Enter 重载生效。`)
+    }
+  }
+
+  const handleReloadClient = () => {
+    if (typeof window.reloadClient === 'function') {
+      window.reloadClient()
+      return
+    }
+    void fetch('/riotclient/kill-and-restart-ux', { method: 'POST' }).catch(() => {
+      window.location.reload()
+    })
   }
 
   return (
@@ -59,7 +81,13 @@ export function UpdatePage() {
             <h3>{t('update.downloadTitle')}</h3>
             <p>{t('update.downloadDescription')}</p>
             <div className="sona-update-actions">
-              <SonaButton variant="primary" onClick={() => openUrl(info.releaseUrl || getReleasePageUrl())}>
+              <SonaButton variant="primary" onClick={openUpdaterFolder}>
+                打开目录一键更新
+              </SonaButton>
+              <SonaButton onClick={handleReloadClient}>
+                重载客户端生效
+              </SonaButton>
+              <SonaButton onClick={() => openUrl(info.releaseUrl || getReleasePageUrl())}>
                 {t('update.openRelease')}
               </SonaButton>
 
@@ -68,6 +96,7 @@ export function UpdatePage() {
               </SonaButton>}
               <SonaButton disabled={updateState.status==='checking'} onClick={()=>{void checkForUpdates()}}>检查更新</SonaButton>
             </div>
+            {folderHint && <p className="sona-update-folder-hint" role="status" style={{ marginTop: 10, marginBottom: 0, color: 'rgb(var(--sona-accent-rgb))' }}>{folderHint}</p>}
           </div>
         </>
       ) : (

@@ -1,0 +1,227 @@
+.sona-comp-diag {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 9px 14px;
+  margin-bottom: 10px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, rgba(11, 18, 28, 0.9) 0%, rgba(16, 24, 36, 0.82) 100%);
+  border: 1px solid rgba(200, 170, 110, 0.28);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
+  color: #f0e6d2;
+  font-size: 12px;
+  line-height: 1.35;
+  box-sizing: border-box;
+}
+
+.sona-comp-diag--danger {
+  border-color: rgba(232, 71, 73, 0.55);
+  background: linear-gradient(90deg, rgba(38, 14, 18, 0.9) 0%, rgba(16, 23, 34, 0.86) 65%);
+}
+
+.sona-comp-diag--compact {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 7px;
+  padding: 8px 10px;
+  margin: 6px 12px 8px;
+  max-width: 310px;
+  backdrop-filter: blur(8px);
+}
+
+.sona-comp-diag-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+.sona-comp-diag--compact .sona-comp-diag-left {
+  justify-content: space-between;
+}
+
+.sona-comp-diag-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  color: #e6c76a;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.sona-comp-diag-sub {
+  font-size: 11px;
+  font-weight: 500;
+  color: #a09b8c;
+}
+
+.sona-comp-diag-avatars {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sona-comp-diag-avatar {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid rgba(200, 170, 110, 0.65);
+  overflow: hidden;
+  background: #091428;
+  flex-shrink: 0;
+}
+
+.sona-comp-diag-avatar.is-intent {
+  border-style: dashed;
+  border-color: rgba(240, 230, 210, 0.65);
+  opacity: 0.82;
+}
+
+.sona-comp-diag-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.sona-comp-diag-bar-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 180px;
+  max-width: 430px;
+  cursor: default;
+}
+
+.sona-comp-diag--compact .sona-comp-diag-bar-section {
+  min-width: 0;
+  max-width: none;
+}
+
+.sona-comp-diag-legend {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.sona-comp-diag-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #cdbe91;
+}
+
+.sona-comp-diag-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.sona-comp-diag-dot--ad {
+  background: #e07a3c;
+}
+
+.sona-comp-diag-dot--ap {
+  background: #4ea8de;
+}
+
+.sona-comp-diag-dot--true {
+  background: #e8e4dc;
+}
+
+.sona-comp-diag-track {
+  display: flex;
+  width: 100%;
+  height: 7px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.55);
+}
+
+.sona-comp-diag-seg {
+  height: 100%;
+  transition: width 0.22s ease;
+}
+
+.sona-comp-diag-seg--ad {
+  background: linear-gradient(90deg, #c96228, #ea8a4c);
+}
+
+.sona-comp-diag-seg--ap {
+  background: linear-gradient(90deg, #327fb8, #58b4eb);
+}
+
+.sona-comp-diag-seg--true {
+  background: linear-gradient(90deg, #cfc9bc, #f4f1ea);
+}
+
+.sona-comp-diag-tags {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.sona-comp-diag--compact .sona-comp-diag-tags {
+  justify-content: flex-start;
+}
+
+.sona-comp-diag-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  white-space: nowrap;
+  cursor: default;
+  border: 1px solid transparent;
+}
+
+.sona-comp-diag-pill--danger {
+  color: #ffb3b5;
+  background: rgba(214, 54, 58, 0.24);
+  border-color: rgba(232, 71, 73, 0.58);
+}
+
+.sona-comp-diag-pill--warn {
+  color: #ffd584;
+  background: rgba(212, 148, 38, 0.2);
+  border-color: rgba(230, 172, 64, 0.48);
+}
+
+.sona-comp-diag-pill--good {
+  color: #8ee6b0;
+  background: rgba(45, 168, 102, 0.2);
+  border-color: rgba(78, 198, 132, 0.45);
+}
+
+.sona-comp-diag-pill--info {
+  color: #b8c7d9;
+  background: rgba(92, 118, 148, 0.2);
+  border-color: rgba(132, 162, 196, 0.36);
+}
+
+@media (max-width: 1120px) {
+  .sona-comp-diag:not(.sona-comp-diag--compact) {
+    flex-wrap: wrap;
+    gap: 8px 12px;
+  }
+  .sona-comp-diag-tags {
+    justify-content: flex-start;
+  }
+}

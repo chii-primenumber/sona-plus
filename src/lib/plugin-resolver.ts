@@ -86,6 +86,10 @@ export function resolvePluginAssetUrl(assetPath: string): string {
   return `${pluginBaseUrl}assets/${normalizedPath.split('/').map(encodeURIComponent).join('/')}`
 }
 
+export function getPluginFolderPath(): string {
+  return pluginFolderName
+}
+
 export function getPluginAssetsFolderPath(): string {
   return `${pluginFolderName}/assets`
 }

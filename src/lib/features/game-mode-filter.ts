@@ -12,7 +12,7 @@
  *      勾选条会自动隐藏。
  */
 
-import { logger } from '@/index'
+import { logger } from '@/lib/logger'
 import { injector } from '@/lib/InjectorManager'
 import { store } from '@/lib/store'
 

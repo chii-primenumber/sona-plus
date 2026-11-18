@@ -1,6 +1,6 @@
 import { createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { logger } from '@/index'
+import { logger } from '@/lib/logger'
 import { MatchHistoryModal } from '@/components/ui/MatchHistoryModal'
 import { injector } from '@/lib/InjectorManager'
 import { lcu, LcuEventUri, queueIdToTag } from '@/lib/lcu'

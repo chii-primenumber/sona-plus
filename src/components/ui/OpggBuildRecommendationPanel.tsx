@@ -154,9 +154,9 @@ export function OpggBuildRecommendationPanel({
     if (!sourceRecommendation) return sourceRecommendation
     const minimum=sampleThreshold(preferences,'items')
     const result={...sourceRecommendation}
-    for (const key of ['starterItems','boots','coreItems','prismItems','lastItems'] as const) result[key]=sortRecommendationBuilds(sourceRecommendation[key].filter(row=>hasEnoughSamples(row.play,minimum)),equipmentOrder)
-    result.runePages=sourceRecommendation.runePages.filter(row=>hasEnoughSamples(row.play,sampleThreshold(preferences,'runes')))
-    result.augments=sourceRecommendation.augments.map(group=>({...group,items:group.items.filter(row=>hasEnoughSamples(row.sampleCount,sampleThreshold(preferences,'augments')))}))
+    for (const key of ['starterItems','boots','coreItems','prismItems','lastItems'] as const) result[key]=sortRecommendationBuilds((sourceRecommendation[key] ?? []).filter(row=>hasEnoughSamples(row.play,minimum)),equipmentOrder)
+    result.runePages=(sourceRecommendation.runePages ?? []).filter(row=>hasEnoughSamples(row.play,sampleThreshold(preferences,'runes')))
+    result.augments=(sourceRecommendation.augments ?? []).map(group=>({...group,items:(group.items ?? []).filter(row=>hasEnoughSamples(row.sampleCount,sampleThreshold(preferences,'augments')))}))
     return result
   },[sourceRecommendation,preferences])
   const champion = getChampionById(context.championId)

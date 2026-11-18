@@ -1,4 +1,4 @@
-import { logger } from '@/index'
+import { logger } from '@/lib/logger'
 import { lcu } from '@/lib/lcu'
 import { injector } from '@/lib/InjectorManager'
 

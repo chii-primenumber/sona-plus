@@ -1,4 +1,5 @@
 import {verifyUpdatePush} from './verify-update-push.mjs'
+import {verifyEnhancements} from './verify-enhancements.mjs'
 import {verifyMatchupDetails} from './verify-matchup-details.mjs'
 import { verifyBpEntryPerformance } from './verify-bp-entry-performance.mjs'
 import { verifyRoomWorkspace } from './verify-room-workspace.mjs'
@@ -280,8 +281,11 @@ try {
   await verifyRoomWorkspace(page,out,games)
   await verifyMatchupDetails(page,out)
   await verifyUpdatePush(page)
+  await verifyEnhancements(page,out,ids,names)
   if (process.env.SONA_BP_PERF) {
     await verifyBpEntryPerformance(page,out,bp)
+    assert.equal(errors.length,0,errors.join('\n'))
+  } else if (process.env.SONA_ENHANCEMENTS_ONLY) {
     assert.equal(errors.length,0,errors.join('\n'))
   } else if (process.env.SONA_BRAND_ONLY) {
     assert.equal(errors.length,0,errors.join('\n'))

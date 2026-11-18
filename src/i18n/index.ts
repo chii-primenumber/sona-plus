@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useSyncExternalStore } from 'react'
 import { store } from '@/lib/store'
 import { locales, type SonaLocale, type SonaLocaleSetting, type TranslationKey } from '@/i18n/locales'
 
@@ -41,31 +41,47 @@ export function translate(key: TranslationKey, params?: Record<string, string | 
   })
 }
 
-export function useI18n() {
-  const [localeSetting, setLocaleSettingState] = useState<SonaLocaleSetting>(() => getCurrentLocaleSetting())
-  const [documentLanguage, setDocumentLanguage] = useState(() => document.documentElement.lang)
+const i18nListeners = new Set<() => void>()
+let stopLocaleStore: (() => void) | null = null
+let langObserver: MutationObserver | null = null
 
-  useEffect(() => {
-    const unsubscribe = store.onChange('locale', (value) => {
-      setLocaleSettingState(normalizeLocaleSetting(value))
-    })
-    const observer = new MutationObserver(() => {
-      setDocumentLanguage(document.documentElement.lang)
-    })
-    observer.observe(document.documentElement, {
+function notifyI18nListeners() {
+  i18nListeners.forEach((listener) => listener())
+}
+
+function subscribeI18n(listener: () => void): () => void {
+  i18nListeners.add(listener)
+  if (i18nListeners.size === 1) {
+    stopLocaleStore = store.onChange('locale', notifyI18nListeners)
+    langObserver = new MutationObserver(notifyI18nListeners)
+    langObserver.observe(document.documentElement, {
       attributes: true,
       attributeFilter: ['lang'],
     })
+  }
 
-    return () => {
-      unsubscribe()
-      observer.disconnect()
+  return () => {
+    i18nListeners.delete(listener)
+    if (i18nListeners.size === 0) {
+      stopLocaleStore?.()
+      stopLocaleStore = null
+      langObserver?.disconnect()
+      langObserver = null
     }
-  }, [])
+  }
+}
 
-  const locale = useMemo(() => {
-    return resolveLocale(localeSetting === 'auto' ? documentLanguage : localeSetting)
-  }, [documentLanguage, localeSetting])
+function getI18nSnapshot(): string {
+  const localeSetting = getCurrentLocaleSetting()
+  const resolved = resolveLocale(localeSetting === 'auto' ? document.documentElement.lang : localeSetting)
+  return `${localeSetting}:${resolved}`
+}
+
+export function useI18n() {
+  const snapshot = useSyncExternalStore(subscribeI18n, getI18nSnapshot, getI18nSnapshot)
+  const separatorIndex = snapshot.indexOf(':')
+  const localeSetting = normalizeLocaleSetting(snapshot.slice(0, separatorIndex))
+  const locale = (snapshot.slice(separatorIndex + 1) === 'en-US' ? 'en-US' : 'zh-CN') as SonaLocale
 
   const t = useMemo(() => {
     return (key: TranslationKey, params?: Record<string, string | number>) => {

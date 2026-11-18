@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { lcu } from '@/lib/lcu'
 import { refreshCareerBackground } from '@/lib/career-background'
-import { logger } from '@/index'
+import { logger } from '@/lib/logger'
 import '@/styles/ProfileBackgroundPicker.css'
 
 // ==================== 类型 ====================

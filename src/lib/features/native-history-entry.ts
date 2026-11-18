@@ -1,7 +1,8 @@
+import { getCurrentSummonerIdentity } from '@/lib/assets'
 import { styleClientEntry } from '@/lib/client-entry-button'
 import { createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { PlayerHistoryModal } from '@/components/ui/PlayerHistoryModal'
+import { MatchHistoryModal as PlayerHistoryModal, preloadMatchHistoryModal } from '@/components/ui/MatchHistoryModal'
 import { registerEmberRule } from '@/lib/ember-hook'
 import { deadline } from '@/lib/history-api'
 import { injector } from '@/lib/InjectorManager'
@@ -22,11 +23,36 @@ type MenuManager = { setMenuItems(items: MenuItem[]): void; openAtEvent(event: M
 let historyRoot: Root | undefined
 let profileEntry: HTMLButtonElement | undefined
 let summaryEntryHost: HTMLElement | undefined
+let cachedProfileIdentity: Identity | undefined
 let latestRequest = 0
 let profileHistoryRegistered = false
 let profileHistorySettingsBound = false
+let ownIdentityCache: Identity | undefined
+let inFlightOwn: Promise<Identity | undefined> | null = null
+const summonerIdCache = new Map<number, Identity>()
+const inFlightById = new Map<number, Promise<Identity | undefined>>()
 const summaryIdentities = new WeakMap<Element, Identity>()
 const rowListeners = new WeakMap<Component, (event: Event) => void>()
+
+function rememberResolvedIdentity(identity: Identity) {
+  if (!identity.puuid) return
+  if (identity.summonerId && identity.summonerId > 0) {
+    summonerIdCache.delete(identity.summonerId)
+    summonerIdCache.set(identity.summonerId, {
+      puuid: identity.puuid,
+      summonerId: identity.summonerId,
+      name: identity.name,
+    })
+    while (summonerIdCache.size > 64) {
+      const oldest = summonerIdCache.keys().next().value
+      if (oldest === undefined) break
+      summonerIdCache.delete(oldest)
+    }
+  }
+  if (identity.ownProfile) {
+    ownIdentityCache = { ...identity, ownProfile: true }
+  }
+}
 
 function playerIdentity(value: unknown): Identity | undefined {
   if (!value || typeof value !== 'object') return
@@ -44,27 +70,117 @@ function playerIdentity(value: unknown): Identity | undefined {
   }
 }
 
+function resolveIdentitySync(identity: Identity): Identity | undefined {
+  if (identity.puuid) {
+    const byId = identity.summonerId && identity.summonerId > 0 ? summonerIdCache.get(identity.summonerId) : undefined
+    const name = identity.name || byId?.name || (identity.ownProfile ? ownIdentityCache?.name : undefined)
+    return name ? { ...identity, name } : identity
+  }
+
+  const assetOwn = getCurrentSummonerIdentity()
+  if (assetOwn.puuid && (!ownIdentityCache || ownIdentityCache.puuid !== assetOwn.puuid)) {
+    rememberResolvedIdentity({
+      puuid: assetOwn.puuid,
+      summonerId: assetOwn.summonerId || undefined,
+      name: assetOwn.name || undefined,
+      ownProfile: true,
+    })
+  }
+
+  if (identity.ownProfile && ownIdentityCache?.puuid) {
+    return { ...ownIdentityCache, name: identity.name || ownIdentityCache.name }
+  }
+
+  if (identity.summonerId && identity.summonerId > 0) {
+    const cached = summonerIdCache.get(identity.summonerId)
+    if (cached?.puuid) {
+      return { ...cached, name: identity.name || cached.name }
+    }
+  }
+
+  return undefined
+}
+
+function warmIdentity(identity: Identity): Promise<Identity | undefined> {
+  const sync = resolveIdentitySync(identity)
+  if (sync?.puuid) return Promise.resolve(sync)
+
+  if (identity.ownProfile) {
+    if (!inFlightOwn) {
+      inFlightOwn = deadline(() => lcu.getSummonerInfo(), undefined, 7000)
+        .then((profile) => {
+          const resolved = playerIdentity(profile)
+          if (resolved?.puuid) rememberResolvedIdentity({ ...resolved, ownProfile: true })
+          return resolved
+        })
+        .finally(() => { inFlightOwn = null })
+    }
+    return inFlightOwn
+  }
+
+  const summonerId = Number(identity.summonerId)
+  if (!(summonerId > 0)) return Promise.resolve(undefined)
+
+  let pending = inFlightById.get(summonerId)
+  if (!pending) {
+    pending = deadline(() => lcu.getSummonerById(summonerId), undefined, 7000)
+      .then((profile) => {
+        const resolved = playerIdentity(profile)
+        if (resolved?.puuid) rememberResolvedIdentity({ ...resolved, summonerId })
+        return resolved
+      })
+      .finally(() => { inFlightById.delete(summonerId) })
+    inFlightById.set(summonerId, pending)
+  }
+  return pending
+}
+
+function ensureHistoryRoot(): Root {
+  if (!historyRoot) {
+    const container = document.createElement('div')
+    container.dataset.sonaOwned = 'true'
+    document.body.append(container)
+    historyRoot = createRoot(container)
+  }
+  return historyRoot
+}
+
+function renderHistoryModal(open: boolean, puuid: string, name: string) {
+  const root = ensureHistoryRoot()
+  const close = () => {
+    latestRequest++
+    root.render(createElement(PlayerHistoryModal, { open: false, onClose: close, puuid, playerName: name }))
+  }
+  root.render(createElement(PlayerHistoryModal, { open, onClose: close, puuid, playerName: name }))
+}
+
 async function openHistory(identity: Identity) {
   const request = ++latestRequest
+  void preloadMatchHistoryModal()
+
+  const sync = resolveIdentitySync(identity)
+  if (sync?.puuid) {
+    renderHistoryModal(true, sync.puuid, sync.name || identity.name || '玩家战绩')
+    return
+  }
+
+  // Open the modal shell immediately on frame 0 so slow LCU summoner lookups never feel unresponsive
+  renderHistoryModal(true, '', identity.name || '详细战绩')
+
   try {
-    const profile = identity.puuid ? null : await deadline(() => identity.ownProfile
-      ? lcu.getSummonerInfo()
-      : lcu.getSummonerById(identity.summonerId!), undefined, 7000)
-    const puuid = identity.puuid || profile?.puuid
-    if (request !== latestRequest || !puuid) return
-    if (!historyRoot) {
-      const container = document.createElement('div')
-      document.body.append(container)
-      historyRoot = createRoot(container)
+    const resolved = await warmIdentity(identity)
+    if (request !== latestRequest) return
+    if (!resolved?.puuid) {
+      renderHistoryModal(false, '', '')
+      if (typeof Toast !== 'undefined') Toast.error('暂时无法查询这位召唤师的战绩')
+      return
     }
-    const name = identity.name || playerIdentity(profile)?.name || '玩家战绩'
-    const close = () => {
-      latestRequest++
-      historyRoot?.render(createElement(PlayerHistoryModal, { open: false, onClose: close, puuid, playerName: name }))
-    }
-    historyRoot.render(createElement(PlayerHistoryModal, { open: true, onClose: close, puuid, playerName: name }))
+    renderHistoryModal(true, resolved.puuid, resolved.name || identity.name || '玩家战绩')
   } catch {
-    if (request === latestRequest && typeof Toast !== 'undefined') Toast.error('暂时无法查询这位召唤师的战绩')
+    if (request === latestRequest) {
+      renderHistoryModal(false, '', '')
+      if (typeof Toast !== 'undefined') Toast.error('暂时无法查询这位召唤师的战绩')
+    }
   }
 }
 
@@ -77,6 +193,28 @@ function visible(element: Element) {
   return element.getClientRects().length > 0 && getComputedStyle(element).visibility === 'visible'
 }
 
+function readIconIdentity(icon: Element, screen: Element): Identity | undefined {
+  const anyIcon = icon as unknown as { puuid?: unknown; summonerId?: unknown }
+  const rawPuuid =
+    icon.getAttribute('puuid')
+    || icon.getAttribute('data-puuid')
+    || (typeof anyIcon.puuid === 'string' ? anyIcon.puuid : '')
+    || icon.shadowRoot?.querySelector('[puuid]')?.getAttribute('puuid')
+    || ''
+  const rawSummonerId =
+    icon.getAttribute('summoner-id')
+    || icon.getAttribute('data-summoner-id')
+    || (typeof anyIcon.summonerId === 'number' || typeof anyIcon.summonerId === 'string' ? anyIcon.summonerId : undefined)
+
+  const parsed = playerIdentity({ puuid: rawPuuid, summonerId: rawSummonerId })
+  if (parsed) return parsed
+
+  if (icon.getAttribute('member-type') === 'current-player' || screen.classList.contains('rcp-fe-lol-profiles-main')) {
+    return { ownProfile: true }
+  }
+  return undefined
+}
+
 function profileIdentity(screen: Element): Identity | undefined {
   const summary = screen.querySelector('.match-summary-profile-main, .match-summary-profile-overlay')
   if (summary && visible(summary)) {
@@ -85,7 +223,7 @@ function profileIdentity(screen: Element): Identity | undefined {
   }
   const icon = Array.from(screen.querySelectorAll(profileIcon)).find(visible)
   if (!icon) return
-  return playerIdentity({ puuid: icon.getAttribute('puuid'), summonerId: icon.getAttribute('summoner-id') })
+  return readIconIdentity(icon, screen)
 }
 
 function activeProfileScreen() {
@@ -95,8 +233,14 @@ function activeProfileScreen() {
 
 function injectProfileButton() {
   const screen = activeProfileScreen()
-  const navigation = screen?.querySelector('.style-profile-sub-nav')
-  const metadata = screen?.querySelector('.match-details-layer-header .match-layer-header-info-list')
+  if (!screen) {
+    cachedProfileIdentity = undefined
+    profileEntry?.remove()
+    summaryEntryHost?.remove()
+    return true
+  }
+  const navigation = screen.querySelector('.style-profile-sub-nav')
+  const metadata = screen.querySelector('.match-details-layer-header .match-layer-header-info-list')
   const summaryVisible = !!metadata && visible(metadata)
   const host = summaryVisible ? metadata : navigation?.parentElement
   let navigationUncovered = false
@@ -105,21 +249,38 @@ function injectProfileButton() {
     const top = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)
     navigationUncovered = !!top && navigation.contains(top)
   }
-  if (!screen || !host || (!summaryVisible && !navigationUncovered) || !profileIdentity(screen)) {
+  const current = host && (summaryVisible || navigationUncovered) ? profileIdentity(screen) : undefined
+  if (!host || !current) {
+    cachedProfileIdentity = undefined
     profileEntry?.remove()
     summaryEntryHost?.remove()
     return true
+  }
+
+  cachedProfileIdentity = current
+  void preloadMatchHistoryModal()
+  ensureHistoryRoot()
+  if (!resolveIdentitySync(current)?.puuid) {
+    void warmIdentity(current).catch(() => {})
   }
 
   if (!profileEntry) {
     profileEntry = document.createElement('button')
     profileEntry.type = 'button'
     profileEntry.className = 'sona-profile-history-entry'
+    profileEntry.dataset.sonaOwned = 'true'
     styleClientEntry(profileEntry, label, 'history')
-    profileEntry.addEventListener('click', () => {
+    profileEntry.addEventListener('pointerenter', () => {
+      void preloadMatchHistoryModal()
+      if (cachedProfileIdentity && !resolveIdentitySync(cachedProfileIdentity)?.puuid) {
+        void warmIdentity(cachedProfileIdentity).catch(() => {})
+      }
+    })
+    profileEntry.addEventListener('click', (event) => {
+      event.stopPropagation()
       const active = activeProfileScreen()
-      const current = active && profileIdentity(active)
-      if (current) void openHistory(current)
+      const latest = (active && profileIdentity(active)) || cachedProfileIdentity
+      if (latest) void openHistory(latest)
     })
   }
   profileEntry.classList.toggle('sona-profile-history-entry-inline', summaryVisible)
@@ -128,6 +289,7 @@ function injectProfileButton() {
       summaryEntryHost?.remove()
       summaryEntryHost = document.createElement(host.matches('ul,ol') ? 'li' : 'span')
       summaryEntryHost.className = 'match-layer-header-info-item'
+      summaryEntryHost.dataset.sonaOwned = 'true'
       host.append(summaryEntryHost)
     }
     if (profileEntry.parentElement !== summaryEntryHost) summaryEntryHost.append(profileEntry)
@@ -145,12 +307,20 @@ export function enableNativeProfileHistory() {
     else if (!enabled) {
       if (profileHistoryRegistered) injector.unregister(injectProfileButton)
       profileHistoryRegistered=false
+      cachedProfileIdentity=undefined
       profileEntry?.remove(); profileEntry=undefined
       summaryEntryHost?.remove(); summaryEntryHost=undefined
     }
   }
   update(store.get('profileHistoryEntry'))
-  if (!profileHistorySettingsBound) { profileHistorySettingsBound=true; store.onChange('profileHistoryEntry',update) }
+  if (!profileHistorySettingsBound) {
+    profileHistorySettingsBound = true
+    store.onChange('profileHistoryEntry', update)
+    lcu.observe('/lol-summoner/v1/current-summoner', (msg) => {
+      const resolved = playerIdentity(msg?.data)
+      if (resolved?.puuid) rememberResolvedIdentity({ ...resolved, ownProfile: true })
+    })
+  }
 }
 
 export function registerNativeHistoryHooks(context: PenguContext) {
@@ -167,9 +337,16 @@ export function registerNativeHistoryHooks(context: PenguContext) {
       const root = target?.rootElement
       if (root instanceof Element) {
         const identity = playerIdentity(options)
-        if (identity) summaryIdentities.set(root, identity)
-        else if (root.classList.contains('match-summary-profile-main')) summaryIdentities.set(root, { ownProfile: true })
-        else summaryIdentities.delete(root)
+        if (identity) {
+          summaryIdentities.set(root, identity)
+          if (!resolveIdentitySync(identity)?.puuid) void warmIdentity(identity).catch(() => {})
+        } else if (root.classList.contains('match-summary-profile-main')) {
+          const own: Identity = { ownProfile: true }
+          summaryIdentities.set(root, own)
+          if (!resolveIdentitySync(own)?.puuid) void warmIdentity(own).catch(() => {})
+        } else {
+          summaryIdentities.delete(root)
+        }
       }
       return display.call(this, options, ...rest)
     }

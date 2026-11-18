@@ -10,7 +10,7 @@ import { styleClientEntry } from '@/lib/client-entry-button'
  * - 根据英雄 / 队列 / 版本上下文拉取 OP.GG 推荐数据
  */
 
-import { logger } from '@/index'
+import { logger } from '@/lib/logger'
 import { injector } from '@/lib/InjectorManager'
 import { createElement } from 'react'
 import { flushSync } from 'react-dom'

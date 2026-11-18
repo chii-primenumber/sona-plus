@@ -1,11 +1,12 @@
 ﻿#requires -Version 5.1
 [CmdletBinding()]
-param([string]$LeaguePath, [switch]$Diagnose, [switch]$NoPause)
+param([string]$LeaguePath, [switch]$Diagnose, [switch]$NoPause, [int]$KeepBackups = 5)
 
 Set-StrictMode -Version 2
 $ErrorActionPreference = 'Stop'
 $script:InstallerFile = $PSCommandPath
 $script:LogFile = $null
+$script:DelegatedToAdmin = $false
 $script:IfeoKey = 'SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\LeagueClientUx.exe'
 
 function Write-Step([string]$Text) {
@@ -269,7 +270,26 @@ function Enable-NewLoaderPermissions([string]$LoaderDir) {
     Set-Acl -LiteralPath $LoaderDir -AclObject $acl
 }
 
-function Invoke-SonaDeployment([string]$PackageRoot,[string]$LeagueDir,[string]$LoaderDir,[string]$BackupRoot) {
+function Remove-OldBackups([string]$BackupRoot, [string]$CurrentBackup, [int]$KeepCount = 5) {
+    if ($KeepCount -lt 1 -or !(Test-Path -LiteralPath $BackupRoot -PathType Container)) { return }
+    $currentFull = Get-FullPath $CurrentBackup
+    $completed = @(Get-ChildItem -LiteralPath $BackupRoot -Directory -Force -ErrorAction SilentlyContinue | Where-Object {
+        !($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -and
+        $_.Name -match '^\d{8}_\d{6}_[0-9a-fA-F]{8}$' -and
+        (Test-Path -LiteralPath (Join-Path $_.FullName 'backup.json') -PathType Leaf)
+    } | Where-Object {
+        try {
+            $meta = Get-Content -LiteralPath (Join-Path $_.FullName 'backup.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+            $meta -and $meta.PSObject.Properties['status'] -and $meta.status -eq 'installed'
+        } catch { $false }
+    } | Sort-Object Name -Descending)
+    for ($i = $KeepCount; $i -lt $completed.Count; $i++) {
+        if ((Get-FullPath $completed[$i].FullName) -ieq $currentFull) { continue }
+        try { Remove-Item -LiteralPath $completed[$i].FullName -Recurse -Force -ErrorAction Stop } catch {}
+    }
+}
+
+function Invoke-SonaDeployment([string]$PackageRoot,[string]$LeagueDir,[string]$LoaderDir,[string]$BackupRoot,[int]$KeepBackups=5) {
     $LoaderDir = Get-FullPath $LoaderDir
     if ($LoaderDir.Length -le [IO.Path]::GetPathRoot($LoaderDir).Length+3 -or (Test-Within $LoaderDir $LeagueDir) -or (Test-Within $LeagueDir $LoaderDir) -or
         (Test-Within $PackageRoot $LoaderDir) -or (Test-Within $BackupRoot $LoaderDir)) { throw '安装目录必须独立于客户端、解压目录和备份目录。' }
@@ -326,6 +346,14 @@ function Invoke-SonaDeployment([string]$PackageRoot,[string]$LeagueDir,[string]$
                 Copy-Item -LiteralPath $file.FullName -Destination (Join-Path $LoaderDir $file.Name) -Force
             }
         } else { Write-Step '已有较新的 Pengu Loader，保留现有版本。' }
+        $oldChunks = Join-Path $oldSona 'chunks'
+        if (Test-Path -LiteralPath $oldChunks -PathType Container) {
+            foreach ($stale in @(Get-ChildItem -LiteralPath $oldChunks -File -Recurse -Force)) {
+                $staleRel = 'plugins\sona\chunks\'+$stale.FullName.Substring((Get-FullPath $oldChunks).Length+1)
+                [void]$written.Add($staleRel)
+                Remove-Item -LiteralPath $stale.FullName -Force
+            }
+        }
         foreach ($file in @(Get-ChildItem -LiteralPath $stagedSona -File -Recurse -Force)) {
             $relative = 'plugins\sona\'+$file.FullName.Substring((Get-FullPath $stagedSona).Length+1)
             $target = Get-DeploymentFile $LoaderDir $pluginsDir $relative
@@ -350,6 +378,9 @@ function Invoke-SonaDeployment([string]$PackageRoot,[string]$LeagueDir,[string]$
         $metadata.written=@($written)
         $metadata.status='installed'
         $metadata | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $backupDir 'backup.json') -Encoding UTF8
+        $stagingRoot = Join-Path $backupDir 'staging'
+        if (Test-Path -LiteralPath $stagingRoot) { Remove-Item -LiteralPath $stagingRoot -Recurse -Force -ErrorAction SilentlyContinue }
+        Remove-OldBackups $BackupRoot $backupDir $KeepBackups
         Write-Step ('安装完成：Sona Plus '+$manifest.version)
         Write-Step ('客户端：'+$LeagueDir)
         Write-Step ('Loader：'+$LoaderDir)
@@ -365,9 +396,11 @@ function Invoke-SonaDeployment([string]$PackageRoot,[string]$LeagueDir,[string]$
             foreach ($relative in $written) {
                 $target = Get-DeploymentFile $LoaderDir $pluginsDir $relative
                 $original = Get-DeploymentFile $snapshot $snapshotPlugins $relative
-                if (Test-Path -LiteralPath $original -PathType Leaf) { Copy-Item -LiteralPath $original -Destination $target -Force }
+                if (Test-Path -LiteralPath $original -PathType Leaf) { [IO.Directory]::CreateDirectory((Split-Path -Parent $target)) | Out-Null; Copy-Item -LiteralPath $original -Destination $target -Force }
                 elseif (Test-Path -LiteralPath $target -PathType Leaf) { Remove-Item -LiteralPath $target -Force }
             }
+            $stagingRoot = Join-Path $backupDir 'staging'
+            if (Test-Path -LiteralPath $stagingRoot) { Remove-Item -LiteralPath $stagingRoot -Recurse -Force -ErrorAction SilentlyContinue }
             Write-Step '本次文件与激活项已恢复，备份已保留。'
         } catch { Write-Step ('自动恢复遇到问题，完整备份在 '+$backupDir+'；原因：'+$_.Exception.Message) }
         throw $failure
@@ -407,8 +440,11 @@ function Start-SonaInstaller {
         Write-Step '安装需要一次 Windows 管理员授权，正在打开安装窗口……'
         $command = "& '"+$script:InstallerFile.Replace("'","''")+"'"
         if ($LeaguePath) { $command += " -LeaguePath '"+$LeaguePath.Replace("'","''")+"'" }
+        if ($KeepBackups -ne 5) { $command += " -KeepBackups "+$KeepBackups }
+        if ($NoPause) { $command += ' -NoPause' }
         $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
         $process = Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-EncodedCommand',$encoded) -Verb RunAs -WindowStyle Normal -Wait -PassThru
+        $script:DelegatedToAdmin = $true
         if ($process.ExitCode -ne 0) { throw '安装未完成，请查看管理员窗口中的提示。' }
         return
     }
@@ -428,7 +464,7 @@ function Start-SonaInstaller {
     if ($linkedCore -and (Split-Path -Leaf $linkedCore) -ieq 'core.dll' -and (Test-Path -LiteralPath (Join-Path (Split-Path -Parent $linkedCore) 'Pengu Loader.exe'))) { $loaders = @((Split-Path -Parent $linkedCore)) + $loaders }
     $loaderDir = if ($loaders.Count) { $loaders[0] } else { Join-Path $env:ProgramFiles 'Pengu Loader' }
     Ensure-Prerequisites $root (Join-Path $dataRoot 'Downloads')
-    Invoke-SonaDeployment $root $leagueDir $loaderDir (Join-Path $dataRoot 'Backups') | Out-Null
+    Invoke-SonaDeployment $root $leagueDir $loaderDir (Join-Path $dataRoot 'Backups') $KeepBackups | Out-Null
     Write-Step ('安装日志：'+$script:LogFile)
 }
 
@@ -436,6 +472,6 @@ if ($MyInvocation.InvocationName -ne '.') {
     $result = 0
     try { Start-SonaInstaller }
     catch { Write-Step ('安装未完成：'+$_.Exception.Message); if ($script:LogFile) { Write-Host ('日志：'+$script:LogFile) }; $result=1 }
-    if (!$NoPause -and !$Diagnose) { [void](Read-Host '按回车关闭') }
+    if (!$NoPause -and !$Diagnose -and !$script:DelegatedToAdmin) { [void](Read-Host '按回车关闭') }
     exit $result
 }

@@ -21,7 +21,7 @@
  *   .quit-button 宽 125px、右边距 10px，配合父容器 flex 布局
  */
 
-import { logger } from '@/index'
+import { logger } from '@/lib/logger'
 import { lcu, LcuEventUri, type LCUEventMessage } from '@/lib/lcu'
 import type { GameflowPhase } from '@/types/lcu'
 import { injector } from '@/lib/InjectorManager'

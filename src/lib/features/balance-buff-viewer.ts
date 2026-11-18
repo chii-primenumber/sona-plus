@@ -13,7 +13,7 @@
  * 数据源：Fandom LoL Wiki（字段用下划线命名，稀疏结构）
  */
 
-import { logger } from '@/index'
+import { logger } from '@/lib/logger'
 import { lcu, LcuEventUri, type LCUEventMessage } from '@/lib/lcu'
 import type { GameflowPhase } from '@/types/lcu'
 import { injector } from '@/lib/InjectorManager'

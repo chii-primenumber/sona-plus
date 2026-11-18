@@ -321,7 +321,8 @@
 .rh-player-link:hover:enabled { color: rgb(var(--sona-accent-rgb)); }
 .rh-player-link :is(img,.rh-image-fallback) { width: 25px; height: 25px; border-radius: 4px; flex: 0 0 25px; }
 .rh-player-link > span:not(.rh-image-fallback) { min-width: 0; overflow-wrap: anywhere; }
-.rh-player-link small { display: block; font-size: 9px; color: rgb(var(--sona-pale-rgb)); }
+.rh-player-link > span:not(.rh-image-fallback) > strong { display: block; }
+.rh-player-link small { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; font-size: 9px; color: rgb(var(--sona-pale-rgb)); }
 .rh-report-loadout { margin-top: 3px; }
 .rh-report-loadout .rh-runes-spells { display: flex; gap: 2px; }
 .rh-report-loadout .rh-runes-spells :is(img,.rh-image-fallback) { width: 13px; height: 13px; }
@@ -411,12 +412,14 @@
 .rh-team-match-detail { overflow: auto; }
 .rh-team-match-detail > h2 { padding: 14px 48px 14px 16px; }
 .rh-card-state { color: rgb(var(--sona-muted-rgb)); font-size: 11px; padding: 4px 0; display: flex; align-items: center; gap: 5px; }
-.rh-team-entry { color: rgb(var(--sona-accent-rgb)); background: var(--sona-history-panel); border: 1px solid rgb(var(--sona-highlight-rgb)); border-radius: 3px; padding: 6px 10px; margin: 3px 7px; min-height: 26px; font: 600 12px 'Microsoft YaHei UI', sans-serif; cursor: pointer; white-space: nowrap; }
-.rh-team-entry:hover { background: var(--sona-history-hover); color: rgb(var(--sona-accent-rgb)); }
-.sona-profile-history-entry { position: absolute; top: 136px; right: 70px; z-index: 4; padding: 3px 11px; color: rgb(var(--sona-accent-rgb)); background: var(--sona-history-panel); border: 1px solid rgb(var(--sona-highlight-rgb)); border-radius: 2px; font-size: 12px; cursor: pointer; }
+.rh-team-entry:not(.sona-client-icon-button) { color: rgb(var(--sona-accent-rgb)); background: var(--sona-history-panel); border: 1px solid rgb(var(--sona-highlight-rgb)); border-radius: 3px; padding: 6px 10px; margin: 3px 7px; min-height: 26px; font: 600 12px 'Microsoft YaHei UI', sans-serif; cursor: pointer; white-space: nowrap; }
+.rh-team-entry:not(.sona-client-icon-button):hover { background: var(--sona-history-hover); color: rgb(var(--sona-accent-rgb)); }
+.sona-profile-history-entry { position: absolute; top: 136px; right: 70px; z-index: 4; cursor: pointer; }
+.sona-profile-history-entry:not(.sona-client-icon-button) { padding: 3px 11px; color: rgb(var(--sona-accent-rgb)); background: var(--sona-history-panel); border: 1px solid rgb(var(--sona-highlight-rgb)); border-radius: 2px; font-size: 12px; }
 .rcp-fe-lol-profiles-modal .sona-profile-history-entry { top: 9px; }
-.sona-profile-history-entry.sona-profile-history-entry-inline { position: static; display: inline-block; margin-inline-start: 10px; vertical-align: middle; z-index: auto; }
-.sona-profile-history-entry:hover { color: rgb(var(--sona-accent-rgb)); border-color: rgb(var(--sona-accent-rgb)); }
+.sona-profile-history-entry.sona-profile-history-entry-inline { position: static; margin-inline-start: 10px; vertical-align: middle; z-index: auto; }
+.sona-profile-history-entry.sona-profile-history-entry-inline:not(.sona-client-icon-button) { display: inline-block; }
+.sona-profile-history-entry:not(.sona-client-icon-button):hover { color: rgb(var(--sona-accent-rgb)); border-color: rgb(var(--sona-accent-rgb)); }
 .sona-postgame-history-entry { display: block; width: 100%; border: 0; background: transparent; padding: 6px 10px; text-align: left; color: rgb(var(--sona-accent-rgb)); cursor: pointer; }
 .sona-postgame-history-entry:hover { background: rgb(var(--sona-accent-rgb) / .16); }
 @media (max-width: 1080px) {

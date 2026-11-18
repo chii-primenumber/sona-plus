@@ -2,11 +2,15 @@
 import argparse
 import hashlib
 import json
+import posixpath
+import re
 import shutil
 import zipfile
 from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parent.parent
+REPO_URL = 'https://github.com/chii-primenumber/sona-plus'
+MARKDOWN_LINK_RE = re.compile(r'(?<!!)\[[^\]]+\]\(([^)]+)\)')
 
 
 def sha256(path):
@@ -19,6 +23,41 @@ def write_zip(directory, destination):
         for path in sorted(directory.rglob('*')):
             if path.is_file():
                 archive.write(path, path.relative_to(directory).as_posix())
+
+
+def rewrite_links(text, mapping):
+    for old, new in mapping:
+        text = text.replace(old, new)
+    return text
+
+
+def verify_markdown_links_in_map(files_by_posix_path, label):
+    all_paths = set(files_by_posix_path.keys())
+    for md_path, content in files_by_posix_path.items():
+        if not md_path.endswith('.md'):
+            continue
+        stripped = re.sub(r'```[\s\S]*?```', '', content)
+        parent = posixpath.dirname(md_path)
+        for match in MARKDOWN_LINK_RE.finditer(stripped):
+            raw_target = match.group(1).strip()
+            if not raw_target or raw_target.startswith(('http://', 'https://', 'mailto:', '#')):
+                continue
+            target_path = raw_target.split('#', 1)[0].strip()
+            if not target_path:
+                continue
+            resolved = posixpath.normpath(posixpath.join(parent, target_path)) if parent else posixpath.normpath(target_path)
+            if resolved.startswith('..') or resolved not in all_paths:
+                raise ValueError(f'Broken relative markdown link in {label}:{md_path} -> {raw_target} (resolved: {resolved})')
+
+
+def verify_archive_markdown_links(zip_path):
+    with zipfile.ZipFile(zip_path) as archive:
+        entries = {
+            item.filename: archive.read(item).decode('utf-8') if item.filename.endswith('.md') else ''
+            for item in archive.infolist()
+            if not item.is_dir()
+        }
+    verify_markdown_links_in_map(entries, zip_path.name)
 
 
 def package(pengu_zip, output):
@@ -35,13 +74,42 @@ def package(pengu_zip, output):
     plugin.mkdir()
     for name in ['index.js', 'index.css']:
         shutil.copy2(ROOT / 'dist' / name, plugin / name)
+    if (ROOT / 'dist/chunks').is_dir():
+        shutil.copytree(ROOT / 'dist/chunks', plugin / 'chunks')
     shutil.copytree(ROOT / 'assets', plugin / 'assets')
     if (ROOT / 'dist/assets').is_dir():
         shutil.copytree(ROOT / 'dist/assets', plugin / 'assets', dirs_exist_ok=True)
     shutil.copy2(ROOT / 'LICENSE', plugin / 'LICENSE')
-    shutil.copy2(ROOT / 'README_个人版.md', plugin / 'README.md')
-    shutil.copy2(ROOT / 'AKARI评分说明.md', bundle / 'AKARI评分说明.md')
-    for source, target in [('installer/INSTALL.md', '安装说明.md'), ('installer/THIRD_PARTY_NOTICES.md', '第三方项目与许可.md'), ('README.md', 'SonaPlus功能介绍.md'), ('installer/vendor.json', 'vendor.json')]:
+    updater_ps_text = (ROOT / 'installer/Update-Sona.ps1').read_text(encoding='utf-8-sig')
+    (plugin / 'Update-Sona.ps1').write_text(updater_ps_text, encoding='utf-8-sig', newline='\r\n')
+    updater_cmd_text = (ROOT / 'installer/Update-Sona.cmd').read_text(encoding='utf-8')
+    (plugin / '双击更新SonaPlus.cmd').write_text(updater_cmd_text, encoding='utf-8', newline='\r\n')
+
+    personal_readme_src = (ROOT / 'README_个人版.md').read_text(encoding='utf-8')
+    bundle_plugin_readme = rewrite_links(personal_readme_src, [
+        ('[完整功能介绍](README.md)', '[完整功能介绍](../SonaPlus功能介绍.md)'),
+        ('[详细安装说明、备份位置与回退方式](installer/INSTALL.md)', '[详细安装说明、备份位置与回退方式](../安装说明.md)'),
+    ])
+    standalone_plugin_readme = rewrite_links(personal_readme_src, [
+        ('[完整功能介绍](README.md)', f'[完整功能介绍]({REPO_URL}#readme)'),
+        ('[详细安装说明、备份位置与回退方式](installer/INSTALL.md)', f'[详细安装说明、备份位置与回退方式]({REPO_URL}/blob/main/installer/INSTALL.md)'),
+    ])
+    (plugin / 'README.md').write_text(bundle_plugin_readme, encoding='utf-8', newline='\n')
+
+    akari_doc_packaged = rewrite_links((ROOT / 'AKARI评分说明.md').read_text(encoding='utf-8'), [
+        ('(assets/licenses/LeagueAkari-MIT.txt)', '(sona/assets/licenses/LeagueAkari-MIT.txt)'),
+    ])
+    (bundle / 'AKARI评分说明.md').write_text(akari_doc_packaged, encoding='utf-8', newline='\n')
+
+    intro_doc_packaged = rewrite_links((ROOT / 'README.md').read_text(encoding='utf-8'), [
+        ('[README_个人版.md](README_个人版.md)', '[sona/README.md](sona/README.md)'),
+        ('[CHANGELOG.md](CHANGELOG.md)', f'[CHANGELOG.md]({REPO_URL}/blob/main/CHANGELOG.md)'),
+        ('[安装说明](installer/INSTALL.md)', '[安装说明](安装说明.md)'),
+        ('[GNU AGPL-3.0](LICENSE)', '[GNU AGPL-3.0](sona/LICENSE)'),
+    ])
+    (bundle / 'SonaPlus功能介绍.md').write_text(intro_doc_packaged, encoding='utf-8', newline='\n')
+
+    for source, target in [('installer/INSTALL.md', '安装说明.md'), ('installer/THIRD_PARTY_NOTICES.md', '第三方项目与许可.md'), ('installer/vendor.json', 'vendor.json')]:
         shutil.copy2(ROOT / source, bundle / target)
     # BOM is necessary for Chinese messages in Windows PowerShell 5.1.
     ps_text = (ROOT / 'installer/Install-Sona.ps1').read_text(encoding='utf-8-sig')
@@ -67,14 +135,30 @@ def package(pengu_zip, output):
         if file.is_file():
             manifest['files'].append({'path': file.relative_to(bundle).as_posix(), 'sha256': sha256(file)})
     (bundle / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+
+    bundle_map = {
+        file.relative_to(bundle).as_posix(): file.read_text(encoding='utf-8') if file.suffix.lower() == '.md' else ''
+        for file in bundle.rglob('*')
+        if file.is_file()
+    }
+    verify_markdown_links_in_map(bundle_map, bundle.name)
+
     all_in_one = output / f'sona-plus-v{version}-one-click-windows.zip'
     write_zip(bundle, all_in_one)
+    verify_archive_markdown_links(all_in_one)
+
     plugin_only = output / f'sona-plus-v{version}.zip'
     with zipfile.ZipFile(plugin_only, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for file in sorted(plugin.rglob('*')):
             if file.is_file():
-                archive.write(file, 'sona/' + file.relative_to(plugin).as_posix())
-        archive.write(ROOT / 'AKARI评分说明.md', 'AKARI评分说明.md')
+                rel = file.relative_to(plugin).as_posix()
+                if rel == 'README.md':
+                    archive.writestr('sona/README.md', standalone_plugin_readme.encode('utf-8'))
+                else:
+                    archive.write(file, 'sona/' + rel)
+        archive.writestr('AKARI评分说明.md', akari_doc_packaged.encode('utf-8'))
+    verify_archive_markdown_links(plugin_only)
+
     (output / 'SHA256SUMS.txt').write_text(''.join(f'{sha256(file)}  {file.name}\n' for file in [all_in_one, plugin_only]), encoding='utf-8')
     print(json.dumps({'version': version, 'bundle': str(bundle), 'files': len(manifest['files']), 'archives': [str(all_in_one), str(plugin_only)]}, ensure_ascii=False, indent=2))
 

@@ -24,7 +24,8 @@ C:\Riot Games\League of Legends
 
 ## 更新已有 Sona
 
-同样退出客户端后运行“一键安装.cmd”。脚本会保留其他插件、原 Loader 的配置和 datastore、已有 Sona 的自定义 assets。备份放在插件目录之外；不会把旧版作为第二个启用的插件留在 plugins 中。较新的 Loader 保留原版本。
+- **日常热更新（无需退出客户端）**：在客户端按 `F1 → 更新` 点击「打开目录一键更新」，直接双击插件目录内的 **双击更新SonaPlus.cmd** 完成校验与替换，随后切回客户端按 **Ctrl+Enter**（或点击更新页「重载客户端生效」）即可立即生效。
+- **完整安装包更新**：若运行完整包中的「一键安装.cmd」（涉及 Loader 本体与激活项检查），请先退出客户端后运行。脚本会保留其他插件、原 Loader 的配置和 datastore、已有 Sona 的自定义 assets。备份放在插件目录之外；不会把旧版作为第二个启用的插件留在 plugins 中。较新的 Loader 保留原版本。
 
 已配置绝对路径 plugins_dir 时，安装到该目录并单独备份外置插件；保留其他插件的停用状态，只启用 Sona。相对路径插件目录需要先改成绝对路径。
 
@@ -39,7 +40,7 @@ C:\Riot Games\League of Legends
 ## 备份、失败与回退
 
 - 日志：`C:\ProgramData\Sona\Logs`。
-- 完整备份：`C:\ProgramData\Sona\Backups\日期_编号\PenguLoader`，并附 `backup.json` 记录安装位置和原激活项。
+- 完整备份：`C:\ProgramData\Sona\Backups\日期_编号\PenguLoader`，并附 `backup.json` 记录安装位置和原激活项；安装成功后自动保留最近 5 份已完成备份并清理临时目录。
 - 外置插件目录备份位于同一编号目录的 `ExternalPlugins`；内置的自定义插件目录仍包含在完整 Loader 备份中。
 - 安装失败时，脚本会尝试恢复这次写入的文件和原激活项，保留日志与备份。系统运行库属于独立组件，安装后不会随失败回退卸载。
 - 回退 Sona：退出客户端，用备份中的 `plugins\sona` 恢复到原 Loader 的 `plugins\sona`。先移走现有 sona，再复制备份，避免混用文件。不要把备份目录整个放入 plugins。
@@ -47,7 +48,7 @@ C:\Riot Games\League of Legends
 
 ## 手动安装与只读检测
 
-已有 Loader 的用户也可只下载普通 `sona-v版本.zip`，将里面的 `sona` 放入 Loader 的 `plugins`；替换前备份旧版和自定义资源。
+已有 Loader 的用户也可只下载普通 `sona-plus-v版本.zip`，将里面的 `sona` 放入 Loader 的 `plugins`；替换前备份旧版和自定义资源。
 
 一键安装包内的 `PenguLoader` 目录也可复制到固定独立位置，运行其管理器并开启激活，再将 `sona` 放入旁边的 `plugins`。不要把 Loader 文件复制到游戏目录。
 

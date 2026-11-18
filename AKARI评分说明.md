@@ -15,7 +15,7 @@ Akari 的九个分项为 KDA、胜率、输出、承伤、治疗、补刀、金�
 - [评分常量与函数](https://github.com/LeagueAkari/LeagueAkari/tree/dev/src/shared/data-adapter/analysis/player)
 - [聚合评分](https://github.com/LeagueAkari/LeagueAkari/blob/dev/src/shared/data-adapter/analysis/player/aggregate/akari.ts)
 - [单场数据口径](https://github.com/LeagueAkari/LeagueAkari/blob/dev/src/shared/data-adapter/analysis/player/single/summary.ts)
-- 独立核对源码及 Git blob SHA 保存在 qa-local/fixtures/akari。
-- 原作者 Hanxven 的 MIT 许可随 assets/licenses/LeagueAkari-MIT.txt 分发。
+- 独立核对源码及 Git blob SHA 保存在源码仓库 `qa-local/fixtures/akari`。
+- 原作者 Hanxven 的 MIT 许可随 [LeagueAkari-MIT.txt](assets/licenses/LeagueAkari-MIT.txt) 分发。
 
 同一玩家的最终数值还受已加载场次、模式及页面筛选影响；项目按当前页面实际样本计算。

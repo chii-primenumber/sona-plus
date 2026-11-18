@@ -39,18 +39,18 @@ export async function verifyBrand(page, out) {
     try {
       lcu.sendNotification = async () => ({})
       let latest = {tag_name:'v1.10.0-personal.44',prerelease:true}
-      let releases = [latest,{tag_name:'v1.2.0',draft:true},{tag_name:'v1.1.0',prerelease:true},{tag_name:'v1.0.0'}]
+      let releases = [latest,{tag_name:'v1.3.0',draft:true},{tag_name:'v1.1.0',prerelease:true},{tag_name:'v1.0.0'}]
       window.fetch = async (url,...args) => (String(url).startsWith('https://corsproxy.io/')||String(url).startsWith('https://api.github.com/repos/chii-primenumber/sona-plus/')) ? new Response(JSON.stringify(decodeURIComponent(String(url)).includes('/latest') ? latest : releases),{status:200}) : old.fetch(url,...args)
       store.set('skippedUpdateVersion','1.10.0-personal.99')
       if ((await update.checkForUpdates()).status !== 'latest') throw Error('Legacy release must not be offered')
       checks.push('legacy release filtering')
-      latest = {tag_name:'v1.1.4',html_url:'https://github.com/chii-primenumber/sona-plus/releases/tag/v1.0.1'}
+      latest = {tag_name:'v1.2.1',html_url:'https://github.com/chii-primenumber/sona-plus/releases/tag/v1.2.1'}
       const first = update.checkForUpdates(), second = update.checkForUpdates()
       if (first !== second) throw Error('Concurrent update checks must share a request')
       const next = await first
-      if (next.status !== 'available' || next.info.latestVersion !== '1.1.4') throw Error('Plus update missing')
+      if (next.status !== 'available' || next.info.latestVersion !== '1.2.1') throw Error('Plus update missing')
       checks.push('Plus update with legacy skip preference and request sharing')
-      update.skipUpdateVersion('1.1.4')
+      update.skipUpdateVersion('1.2.1')
       if ((await update.checkForUpdates()).status !== 'latest') throw Error('Skipped Plus release should stay skipped')
       checks.push('Plus skip preference')
       latest = {tag_name:'v1.10.0-personal.44',prerelease:true}; releases = [latest]

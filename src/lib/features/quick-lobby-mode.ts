@@ -16,7 +16,7 @@
  *     配合 stopPropagation 即可在事件抵达委托处理器前拦下，阻止原生展开。
  */
 
-import { logger } from '@/index'
+import { logger } from '@/lib/logger'
 import { lcu, LcuEventUri, type LCUEventMessage } from '@/lib/lcu'
 import { store } from '@/lib/store'
 import { injector } from '@/lib/InjectorManager'

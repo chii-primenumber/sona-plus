@@ -10,9 +10,11 @@
  */
 
 import { lcu } from '@/lib/lcu'
-import { logger } from '@/index'
+import { logger } from '@/lib/logger'
 import type { GameQueue } from '@/types/lcu'
 import balanceData from '@/data/champion-balance.json'
+import { getCorsProxyCandidates } from '@/lib/cors-proxy'
+import { store } from '@/lib/store'
 import { richDescription } from './game-description'
 
 /** 路径小写化，LCU 资源路径不区分大小写但统一小写更安全 */
@@ -76,6 +78,8 @@ export interface ChampionInfo {
   title: string
   /** 英文名，如 "Annie" */
   alias: string
+  /** 官方定位标签，如 ["mage", "support"] */
+  roles?: string[]
 }
 const championMap = new Map<number, ChampionInfo>()
 
@@ -118,12 +122,23 @@ let initialized = false
 
 // ==================== 当前账号 puuid ====================
 
-/** 当前登录账号的 puuid，在插件 load 时获取一次，整个生命周期内不会变化 */
+/** 当前登录账号的 puuid / summonerId / Riot ID，在插件 load 时获取一次 */
 let currentPuuid = ''
+let currentSummonerId = 0
+let currentSummonerName = ''
 
 /** 获取当前账号的 puuid（插件加载时初始化，之后不变） */
 export function getPuuid(): string {
   return currentPuuid
+}
+
+/** 获取当前登录召唤师已缓存的身份信息（零网络请求） */
+export function getCurrentSummonerIdentity(): { puuid: string; summonerId: number; name: string } {
+  return {
+    puuid: currentPuuid,
+    summonerId: currentSummonerId,
+    name: currentSummonerName,
+  }
 }
 
 // ==================== 初始化 ====================
@@ -139,40 +154,156 @@ export async function initAssets() {
   try {
     const summoner = await lcu.getSummonerInfo()
     currentPuuid = summoner.puuid || ''
+    currentSummonerId = Number(summoner.summonerId) || 0
+    const gName = (summoner.gameName || summoner.displayName || '').trim()
+    const gTag = (summoner.tagLine || '').trim()
+    currentSummonerName = gName ? (gTag && !gName.includes('#') ? `${gName}#${gTag}` : gName) : ''
     logger.info('[Assets] 当前账号 puuid=%s', currentPuuid)
   } catch (err) {
     logger.warn('[Assets] 获取 puuid 失败:', err)
   }
 
-  // 加载本地英雄平衡数据（构建期嵌入，无网络请求）
+  // 加载本地英雄平衡数据（内置离线保底 + 已缓存热更新）
   loadChampionBalance()
+  scheduleRemoteChampionBalanceSync()
 
   // 每个资源独立 catch，失败不影响其他；最多重试 3 次（每次间隔 3 秒）
   await tryInit(0)
 }
 
-// ==================== 英雄平衡数据（构建期嵌入） ====================
+// ==================== 英雄平衡数据（内置保底 + 远端 24h 热缓存） ====================
+
+const REMOTE_BALANCE_URL = 'https://raw.githubusercontent.com/chii-primenumber/sona-plus/main/src/data/champion-balance.json'
+const BALANCE_CACHE_TTL_MS = 24 * 60 * 60 * 1000
+let balanceSyncScheduled = false
+let activeBalanceUpdatedAt = ''
+
+function parseIsoTimestamp(value: unknown): number {
+  if (typeof value !== 'string' || !value) return 0
+  const ts = Date.parse(value)
+  return Number.isFinite(ts) ? ts : 0
+}
+
+function applyBalanceMap(champions: Record<string, unknown>): number {
+  let applied = 0
+  for (const [idKey, rawEntry] of Object.entries(champions)) {
+    const id = Number(idKey)
+    if (!Number.isFinite(id) || id <= 0 || !rawEntry || typeof rawEntry !== 'object') continue
+    const entry = rawEntry as Partial<ChampionBalance>
+    if (!entry.stats || typeof entry.stats !== 'object') continue
+    championBalanceMap.set(id, {
+      id,
+      alias: typeof entry.alias === 'string' ? entry.alias : '',
+      stats: entry.stats,
+    })
+    applied += 1
+  }
+  return applied
+}
 
 /**
- * 从本地 JSON 加载英雄平衡数据到 championBalanceMap
- *
- * 数据由 scripts/update-champion-balance.ts 从 Fandom LoL Wiki 爬取，
- * 构建期通过 import 嵌入 JS bundle，运行时零网络请求。
+ * 从内置 JSON 及本地较新热缓存加载英雄平衡数据到 championBalanceMap
  */
 function loadChampionBalance() {
   try {
-    const champions = balanceData.champions as Record<string, ChampionBalance>
-    for (const [id, balance] of Object.entries(champions)) {
-      championBalanceMap.set(Number(id), balance)
+    const bundledUpdatedAt = balanceData._meta?.updatedAt ?? ''
+    const bundledTime = parseIsoTimestamp(bundledUpdatedAt)
+    championBalanceMap.clear()
+    applyBalanceMap(balanceData.champions as Record<string, unknown>)
+    activeBalanceUpdatedAt = bundledUpdatedAt
+
+    const cached = store.get('cachedChampionBalance')
+    if (cached && typeof cached === 'object') {
+      const cachedTime = parseIsoTimestamp(cached.updatedAt)
+      const cachedEntries = cached.champions && typeof cached.champions === 'object'
+        ? Object.keys(cached.champions).length
+        : 0
+      if (cachedTime > bundledTime && cachedEntries > 0) {
+        championBalanceMap.clear()
+        const count = applyBalanceMap(cached.champions)
+        activeBalanceUpdatedAt = cached.updatedAt
+        logger.info('[Assets] 已应用热缓存英雄平衡数据 → %d 个英雄 (更新于 %s)', count, activeBalanceUpdatedAt)
+        return
+      }
+      if (cachedEntries > 0 && cachedTime <= bundledTime) {
+        store.set('cachedChampionBalance', {
+          fetchedAt: cached.fetchedAt || 0,
+          updatedAt: bundledUpdatedAt,
+          champions: {},
+        })
+      }
     }
+
     logger.info(
       '[Assets] 英雄平衡数据加载完成 → %d 个英雄 (数据更新于 %s)',
       championBalanceMap.size,
-      balanceData._meta?.updatedAt ?? '未知',
+      activeBalanceUpdatedAt || '未知',
     )
   } catch (err) {
     logger.error('[Assets] 英雄平衡数据加载失败:', err)
   }
+}
+
+export async function syncRemoteChampionBalance(force = false): Promise<boolean> {
+  const cached = store.get('cachedChampionBalance')
+  if (!force && cached && Number.isFinite(cached.fetchedAt) && Date.now() - cached.fetchedAt < BALANCE_CACHE_TTL_MS) {
+    return false
+  }
+
+  const candidates = [REMOTE_BALANCE_URL, ...getCorsProxyCandidates(REMOTE_BALANCE_URL)]
+  for (const url of candidates) {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 8000)
+    try {
+      const res = await fetch(url, { signal: controller.signal, method: 'GET', mode: 'cors' })
+      if (!res.ok) continue
+      const data = await res.json() as { _meta?: { updatedAt?: string }; champions?: Record<string, unknown> }
+      const remoteUpdatedAt = data?._meta?.updatedAt ?? ''
+      const remoteTime = parseIsoTimestamp(remoteUpdatedAt)
+      if (!remoteTime || !data?.champions || typeof data.champions !== 'object') continue
+
+      const bundledUpdatedAt = balanceData._meta?.updatedAt ?? ''
+      const bundledTime = parseIsoTimestamp(bundledUpdatedAt)
+      const currentTime = parseIsoTimestamp(activeBalanceUpdatedAt)
+
+      if (remoteTime > Math.max(bundledTime, currentTime)) {
+        championBalanceMap.clear()
+        const count = applyBalanceMap(data.champions)
+        if (count > 0) {
+          activeBalanceUpdatedAt = remoteUpdatedAt
+          store.set('cachedChampionBalance', {
+            fetchedAt: Date.now(),
+            updatedAt: remoteUpdatedAt,
+            champions: data.champions,
+          })
+          logger.info('[Assets] 远端英雄平衡数据已热更新 → %d 个英雄 (%s)', count, remoteUpdatedAt)
+          return true
+        }
+      }
+
+      store.set('cachedChampionBalance', {
+        fetchedAt: Date.now(),
+        updatedAt: activeBalanceUpdatedAt || bundledUpdatedAt,
+        champions: remoteTime > bundledTime ? data.champions : {},
+      })
+      return false
+    } catch {
+      // try next candidate silently
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
+  return false
+}
+
+function scheduleRemoteChampionBalanceSync() {
+  if (balanceSyncScheduled || typeof window === 'undefined') return
+  balanceSyncScheduled = true
+  window.setTimeout(() => {
+    if (typeof document !== 'undefined' && document.hidden) return
+    void syncRemoteChampionBalance(false)
+  }, 20000)
 }
 
 /**
@@ -260,6 +391,7 @@ async function tryInit(attempt: number) {
         name: champ.description || '',
         title: champ.name || '',
         alias: champ.alias,
+        roles: Array.isArray(champ.roles) ? champ.roles : [],
       })
     }
   }
@@ -478,7 +610,9 @@ export function isChampionBalanceReady(): boolean {
 
 /** 获取英雄平衡数据的元信息（数据源、更新时间等） */
 export function getChampionBalanceMeta() {
-  return balanceData._meta
+  return activeBalanceUpdatedAt
+    ? { ...balanceData._meta, updatedAt: activeBalanceUpdatedAt, championCount: championBalanceMap.size }
+    : balanceData._meta
 }
 
 /**
@@ -523,4 +657,46 @@ export function getPlayableQueues(): { id: number; name: string }[] {
   // 按名称排序
   result.sort((a, b) => a.name.localeCompare(b.name, 'zh'))
   return result
+}
+
+/**
+ * 将自定义房间或同名衍生队列 ID 归一到标准可玩匹配队列 ID：
+ * - 例如创建自定义「海克斯大乱斗」房间时，自动归一为匹配「海克斯大乱斗」(2400)，
+ *   杜绝下拉框出现两个同名「海克斯大乱斗」且默认选中少量自定义记录队列。
+ * - 召唤师峡谷普通自定义内战归一到 0（全部模式）。
+ */
+export function resolveCanonicalQueueId(
+  queueId: number,
+  hint?: { name?: string; gameMode?: string; isCustom?: boolean; mapId?: number } | null,
+): number {
+  if (!Number.isFinite(queueId) || queueId <= 0) return 0
+  const playable = getPlayableQueues()
+  if (playable.some((q) => q.id === queueId)) return queueId
+
+  const raw = queueMap.get(queueId)
+  const effectiveName = (raw?.name || raw?.shortName || hint?.name || '').trim()
+  const isCustom = Boolean(raw?.isCustom || hint?.isCustom)
+  const mode = (raw?.gameMode || hint?.gameMode || '').toUpperCase()
+  const mapId = raw?.mapId ?? hint?.mapId ?? 0
+
+  if (effectiveName) {
+    const sameNamePlayable = playable.find((q) => q.name.trim() === effectiveName)
+    if (sameNamePlayable) return sameNamePlayable.id
+  }
+
+  if (!isCustom) return queueId
+
+  if (mode === 'KIWI') {
+    const kiwi = playable.find((q) => q.id === 2400 || (queueMap.get(q.id)?.gameMode || '').toUpperCase() === 'KIWI')
+    return kiwi ? kiwi.id : 2400
+  }
+  if (mode === 'ARAM' || mapId === 12) {
+    const aram = playable.find((q) => q.id === 450 || (queueMap.get(q.id)?.gameMode || '').toUpperCase() === 'ARAM')
+    return aram ? aram.id : 450
+  }
+  if (mode === 'CHERRY' || mode === 'ARENA') {
+    const arena = playable.find((q) => (queueMap.get(q.id)?.gameMode || '').toUpperCase() === 'CHERRY')
+    if (arena) return arena.id
+  }
+  return 0
 }

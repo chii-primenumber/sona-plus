@@ -4,6 +4,9 @@ import { HistoryAssetTooltip } from './HistoryAssetTooltip'
 import { HistoryReplayButton } from './HistoryReplayButton'
 import { HistoryPlayerName } from './HistoryPlayerName'
 import { HistoryRuneDetails } from './HistoryRuneDetails'
+import { PlayerTagBadge, PlayerTagEditorModal, TagBookmarkIcon, type PlayerTagTarget } from './PlayerTagWidgets'
+import { evaluateMatchMvpAndScores } from '@/lib/postgame-intel'
+import { usePlayerTagFeatureEnabled, usePlayerTags, usePostgameEnhancementEnabled } from '@/lib/player-tags'
 import { Modal } from './Modal'
 import { getChampIcon, getChampionById, getItemInfo, getSpellInfo, getPerkInfo, getPerkStyleIcon, getPerkStyleName, getPerkStyleDescription, normalizeDescription, getAugmentInfo, getQueueName, getMapName } from '@/lib/assets'
 import { championStats, durationText, finite, getOutcome, getPosition, matchBadges, metric, numberText, percentText, POSITION_NAMES, riotName, share, summarize, teamKey, type HistoryMatch } from '@/lib/history-model'
@@ -342,6 +345,7 @@ function reportColumns(game: SgpGameSummaryLol, view: ReportView, show: (field: 
 
 export function MatchReport({ game, focusPuuid, onInspect }: { game: SgpGameSummaryLol; focusPuuid: string; onInspect?: (puuid: string, name: string) => void }) {
   const [view, setView] = useState<ReportView>('combat')
+  const [tagTarget, setTagTarget] = useState<PlayerTagTarget | null>(null)
   const hidden = useHistoryHiddenFields()
   const show = (field: ReportField) => isHistoryFieldVisible(hidden, 'report', field)
   const performance = useHistoryPerformanceFields()
@@ -376,30 +380,65 @@ export function MatchReport({ game, focusPuuid, onInspect }: { game: SgpGameSumm
         const teamName = game.json.gameMode === 'CHERRY' ? `小队 ${key}` : key === 100 ? '蓝色方' : key === 200 ? '红色方' : `队伍 ${key}`
         const result = outcome === 'win' ? '胜利' : outcome === 'loss' ? '失败' : outcome === 'remake' ? '重开' : '终止 / 未知'
         return <TeamReportRows key={key} players={players} game={game} focusPuuid={focusPuuid} onInspect={onInspect} columns={columns} teamKills={teamKills}
+          onTagPlayer={(puuid, name) => setTagTarget({ puuid, name, matchId: String(game.json.gameId || '') })}
           label={<><strong>{teamName}</strong><b className={`rh-report-outcome rh-report-outcome--${outcome}`}>{result}</b><span><b>{kills}</b>击杀</span><span><b>{numberText(totalGold)}</b>金币</span>{objective && <>{[['塔',objective.tower?.kills],['小龙',objective.dragon?.kills],['大龙',objective.baron?.kills]].map(([label,value])=><span key={label}><b>{value ?? '—'}</b>{label}</span>)}</>}</>} />
       })}
     </tbody></table></div>
     {(damageLegend || economyLegend) && <div className="rh-report-legend">
       {damageLegend && DAMAGE_LEGEND.map(([color, label]) => <span key={color}><i className={`rh-report-bar-${color}`} />{label}</span>)}
       {economyLegend && <span><i className="rh-report-bar-gold" />经济</span>}
-      <span>条长相对本场同项最高值，百分比为队内占比。</span>
     </div>}
+    <PlayerTagEditorModal open={Boolean(tagTarget)} target={tagTarget} onClose={() => setTagTarget(null)} />
   </div>
 }
 
-function TeamReportRows({ players, label, game, focusPuuid, onInspect, columns, teamKills }: {
+function TeamReportRows({ players, label, game, focusPuuid, onInspect, onTagPlayer, columns, teamKills }: {
   players: SgpParticipantLol[]; label: ReactNode; game: SgpGameSummaryLol; focusPuuid: string
-  onInspect?: (puuid: string, name: string) => void; columns: ReportColumn[]; teamKills: number | null
+  onInspect?: (puuid: string, name: string) => void; onTagPlayer?: (puuid: string, name: string) => void; columns: ReportColumn[]; teamKills: number | null
 }) {
+  const tagFeatureEnabled = usePlayerTagFeatureEnabled()
+  const postgameEnabled = usePostgameEnhancementEnabled()
+  const tagsMap = usePlayerTags()
+  const perfMap = useMemo(() => (postgameEnabled ? evaluateMatchMvpAndScores(game) : null), [game, postgameEnabled])
   return <><tr className="rh-team-divider"><td colSpan={columns.length + 1}>{label}</td></tr>
-    {players.map((p, index) => <tr key={p.puuid || index} className={p.puuid === focusPuuid ? 'is-focus' : ''}>
-      <td><button type="button" className="rh-player-link" disabled={!p.puuid || !onInspect} onClick={() => onInspect?.(p.puuid, riotName(p))}>
-        <HistoryImage src={getChampIcon(p.championId)} label={championName(p.championId)} />
-        <span><strong><HistoryPlayerName name={riotName(p)} showTag /></strong><small>{championName(p.championId)}</small></span>
-      </button></td>
-      {columns.map(({ key, render }) =>
-        <td key={key} className={key === 'loadout' ? 'rh-report-loadout-cell' : undefined}>{render(p, teamKills)}</td>)}
-    </tr>)}
+    {players.map((p, index) => {
+      const pName = riotName(p)
+      const tagRecord = tagFeatureEnabled && p.puuid ? (tagsMap[p.puuid] ?? null) : null
+      const perf = perfMap ? (perfMap.get(p.puuid) ?? (p.summonerId ? perfMap.get(`sid:${p.summonerId}`) : undefined)) : undefined
+      return <tr key={p.puuid || index} className={p.puuid === focusPuuid ? 'is-focus' : ''}>
+        <td><div className="rh-report-player-cell">
+          <button type="button" className="rh-player-link" disabled={!p.puuid || !onInspect} onClick={() => onInspect?.(p.puuid, pName)}>
+            <HistoryImage src={getChampIcon(p.championId)} label={championName(p.championId)} />
+            <span>
+              <strong><HistoryPlayerName name={pName} showTag /></strong>
+              <small>
+                <span>{championName(p.championId)}</span>
+                {perf?.award && (
+                  <span className={`rh-perf-award rh-perf-award--${perf.award.toLowerCase()}`} data-testid={`report-award-${perf.award.toLowerCase()}`} title={`本局表现评分 ${perf.score.toFixed(1)}`}>
+                    {perf.award} · {perf.score.toFixed(1)}
+                  </span>
+                )}
+                {tagRecord && <PlayerTagBadge puuid={p.puuid} record={tagRecord} />}
+              </small>
+            </span>
+          </button>
+          {tagFeatureEnabled && p.puuid && onTagPlayer && (
+            <HistoryAssetTooltip title={tagRecord ? `编辑标记：${tagRecord.label}` : '标记该玩家'} compact asChild>
+              <button
+                type="button"
+                className={`rh-mini-tag-btn${tagRecord ? ' is-tagged' : ''}`}
+                aria-label={`标记 ${pName}`}
+                onClick={() => onTagPlayer(p.puuid, pName)}
+              >
+                <TagBookmarkIcon filled={Boolean(tagRecord)} />
+              </button>
+            </HistoryAssetTooltip>
+          )}
+        </div></td>
+        {columns.map(({ key, render }) =>
+          <td key={key} className={key === 'loadout' ? 'rh-report-loadout-cell' : undefined}>{render(p, teamKills)}</td>)}
+      </tr>
+    })}
   </>
 }
 

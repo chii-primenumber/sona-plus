@@ -20,7 +20,7 @@
 
 import { registerEmberRule } from '@/lib/ember-hook'
 import { store } from '@/lib/store'
-import { logger } from '@/index'
+import { logger } from '@/lib/logger'
 
 export function registerChromaRules() {
   // 开关关闭就不注册规则，彻底不劫持

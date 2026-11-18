@@ -13,7 +13,7 @@
  * window.Ember 那些被完全封死了，搞不到Ember对象。还是走RCP优雅。
  */
 
-import { logger } from '@/index'
+import { logger } from '@/lib/logger'
 
 /** Ember.Component 的简单建模（runtime 里实际是 Ember 对象，这里只标注我们用到的部分） */
 type EmberComponentClass = {

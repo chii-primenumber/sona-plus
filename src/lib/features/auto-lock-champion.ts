@@ -1,9 +1,10 @@
-import { logger } from '@/index'
+import { logger } from '@/lib/logger'
 import { store } from '@/lib/store'
 import { lcu, LcuEventUri } from '@/lib/lcu'
 import type { LCUEventMessage, GameflowPhase, ChampSelectSession } from '@/lib/lcu'
 import { sleep } from '@/lib/utils'
 import { getChampionById, getQueue } from '@/lib/assets'
+import { resolvePresetChampionIds } from '@/lib/champselect-enhancements'
 import { translate } from '@/i18n'
 
 // ==================== 秒抢英雄 ====================
@@ -23,8 +24,24 @@ async function notifyAutoLockSuccess(championId: number, isLock: boolean) {
   }
 }
 
-function getConfiguredChampionIds(): number[] {
-  return [...new Set(store.get('autoLockChampionIds').filter((id) => id > 0))]
+function hasAnyConfiguredLockChampion(): boolean {
+  if (store.get('autoLockChampionIds').some((id) => id > 0)) return true
+  if (!store.get('champSelectPresetSwitch')) return false
+  const presets = store.get('champSelectPresets')
+  return Object.values(presets ?? {}).some((entry) => entry?.lockIds?.some((id) => id > 0))
+}
+
+function getConfiguredChampionIdsForSession(session: ChampSelectSession): number[] {
+  const localPlayer = session.myTeam.find((player) => player.cellId === session.localPlayerCellId)
+  const queue = getQueue(session.queueId)
+  return resolvePresetChampionIds('lock', {
+    presetEnabled: store.get('champSelectPresetSwitch'),
+    presets: store.get('champSelectPresets'),
+    defaultIds: store.get('autoLockChampionIds'),
+    gameMode: queue?.gameMode,
+    queueId: session.queueId,
+    assignedPosition: localPlayer?.assignedPosition,
+  }).ids
 }
 
 function isRankedQueue(queueId: number): boolean {
@@ -123,7 +140,7 @@ function collectUnavailablePickIds(session: ChampSelectSession, actionChampionId
 }
 
 async function resolveTargetChampionId(session: ChampSelectSession, actionChampionId = 0): Promise<number | null> {
-  const championIds = getConfiguredChampionIds()
+  const championIds = getConfiguredChampionIdsForSession(session)
   if (championIds.length === 0) return null
 
   const [pickableIds, disabledIds] = await Promise.all([
@@ -145,7 +162,7 @@ async function resolveTargetChampionId(session: ChampSelectSession, actionChampi
  * 仅在有 pick 动作的模式生效（排位/匹配等），大乱斗等无 pick 的模式不受影响
  */
 async function tryAutoLockChampion() {
-  if (getConfiguredChampionIds().length === 0) {
+  if (!hasAnyConfiguredLockChampion()) {
     logger.warn('[AutoLock] 未设置目标英雄队列')
     return
   }

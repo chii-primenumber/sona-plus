@@ -2,7 +2,7 @@ import {openGameTools} from '@/lib/game-tools-navigation'
 import { HistorySelect } from './HistorySelect'
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Modal, type ModalProps } from './Modal'
-import { PlayerHistoryModal } from './PlayerHistoryModal'
+import { MatchHistoryModal as PlayerHistoryModal } from './MatchHistoryModal'
 import { ChampionStrip, HistoryImage, MatchReport, championName } from './HistoryWidgets'
 import { HistoryDisplaySettings } from './HistoryDisplaySettings'
 import { HistoryPlayerName } from './HistoryPlayerName'
@@ -11,10 +11,14 @@ import { HistoryPerformanceStats } from './HistoryPerformanceStats'
 import { HistoryScrollTop } from './HistoryScrollTop'
 import { bindScrollbarHighlight } from '@/lib/scrollbar-highlight'
 import { RefreshIcon, SettingsIcon } from './icons'
-import { lcu, LcuEventUri } from '@/lib/lcu'
+import { EncounterAlertBadge, PlayerTagBadge, PlayerTagBookModal, PlayerTagEditorModal, TagBookIcon, TagBookmarkIcon, type PlayerTagTarget } from './PlayerTagWidgets'
+import { CompDiagnosticBar } from './CompDiagnosticBar'
+import { analyzeChampSelectSession, type TeamCompDiagnostic } from '@/lib/comp-diagnostic'
+import { lcu, LcuEventUri, isMatchingQueue } from '@/lib/lcu'
 import { store } from '@/lib/store'
 import { deobfuscateChampSelectPuuid } from '@/lib/champ-select-puuid'
-import { getChampIcon, getPlayableQueues, getQueueName } from '@/lib/assets'
+import { getChampIcon, getPlayableQueues, getPuuid, getQueueName, resolveCanonicalQueueId } from '@/lib/assets'
+import { buildEncounterLookup, useEncounterAlertEnabled, usePlayerTag, usePlayerTagFeatureEnabled, type RecentEncounterSummary } from '@/lib/player-tags'
 import { getRankedMiniCrest } from '@/lib/ranked-assets'
 import { deadline, fetchHistoryRanks, fetchHistorySummoner, rankText, type HistoryRank } from '@/lib/history-api'
 import { mean, numberText, percentText, POSITION_NAMES, profileIconUrl, summarize, toHistoryMatches, validMatches, type HistoryMatch } from '@/lib/history-model'
@@ -37,8 +41,13 @@ const emptyParty = new Set<string>()
 
 const positionName = (position: string) => POSITION_NAMES[({ MID: 'MIDDLE', BOT: 'BOTTOM', SUPPORT: 'UTILITY' } as Record<string, string>)[position.toUpperCase()] || position.toUpperCase()] || ''
 
-function bpSnapshot(session: ChampSelectSession, party: ReadonlySet<string>, fallbackQueueId = 0): Snapshot {
-  const queueId = session.queueId || fallbackQueueId
+function bpSnapshot(
+  session: ChampSelectSession,
+  party: ReadonlySet<string>,
+  fallbackQueue?: { id?: number; name?: string; gameMode?: string; isCustom?: boolean; mapId?: number } | null,
+): Snapshot {
+  const rawQueueId = session.queueId || fallbackQueue?.id || 0
+  const queueId = resolveCanonicalQueueId(rawQueueId, fallbackQueue)
   const picks = (session.actions || []).flat(2).filter((action) => action.type === 'pick')
   return { queueId, queueName: getQueueName(queueId), teams: [{ id: 'ally', label: '己方队伍', members: (session.myTeam || []).slice(0, 5).map((p, index) => {
     const puuid = p.puuid || (p.nameVisibilityType === 'HIDDEN' && p.obfuscatedPuuid ? deobfuscateChampSelectPuuid(p.obfuscatedPuuid) : '')
@@ -70,7 +79,8 @@ function gameSnapshot(session: GameflowSession): Snapshot {
   })
   const seen = new Set<string>()
   for (const team of teams) team.members = team.members.filter((member) => { if (seen.has(member.key)) return false; seen.add(member.key); return true })
-  return { queueId: data.queue?.id || 0, queueName: data.queue?.name || getQueueName(data.queue?.id || 0), teams }
+  const resolvedQueueId = resolveCanonicalQueueId(data.queue?.id || 0, data.queue)
+  return { queueId: resolvedQueueId, queueName: getQueueName(resolvedQueueId), teams }
 }
 
 function HistoryFrame({embedded,...props}:ModalProps&{embedded?:boolean}) { return embedded ? <>{props.children}</> : <Modal {...props}/> }
@@ -98,7 +108,8 @@ async function lobbySnapshot(lobby: Lobby, signal:AbortSignal): Promise<Snapshot
     return {id:teamId===100?'blue':'red',label:teamId===100?'蓝色方':'红色方',members:players.filter((p):p is Member=>p!==null)}
   }))
   for(const team of teams)team.members=team.members.filter(member=>{if(seen.has(member.puuid))return false;seen.add(member.puuid);return true})
-  return {queueId:config.queueId||0,queueName:getQueueName(config.queueId||0),teams}
+  const resolvedLobbyQueueId = resolveCanonicalQueueId(config.queueId || 0, { gameMode: config.gameMode, isCustom: config.isCustom, mapId: config.mapId })
+  return {queueId:resolvedLobbyQueueId,queueName:getQueueName(resolvedLobbyQueueId),teams}
 }
 
 export function TeamHistoryModal({ open, onClose, mode, party = emptyParty, embedded=false }: {
@@ -115,27 +126,42 @@ export function TeamHistoryModal({ open, onClose, mode, party = emptyParty, embe
   const [target, setTarget] = useState<{ puuid: string; name: string } | null>(null)
   const [selectedMatch, setSelectedMatch] = useState<HistoryMatch | null>(null)
   const [showSettings, setShowSettings] = useState(false)
+  const [showTagBook, setShowTagBook] = useState(false)
+  const [tagTarget, setTagTarget] = useState<PlayerTagTarget | null>(null)
+  const [compDiag, setCompDiag] = useState<TeamCompDiagnostic | null>(null)
+  const [compDiagEnabled, setCompDiagEnabled] = useState(() => store.get('champSelectCompDiagnostic'))
   const bodyRef = useRef<HTMLDivElement | null>(null)
   const scrollTargets = useMemo(()=>[bodyRef],[])
   const hidden = useHistoryHiddenFields()
+  useEffect(() => store.onChange('champSelectCompDiagnostic', setCompDiagEnabled), [])
   useEffect(() => {
-    if (!open) { setTarget(null); setSelectedMatch(null); setShowSettings(false); setSelectedQueue(null); return }
+    if (!open) { setTarget(null); setSelectedMatch(null); setShowSettings(false); setSelectedQueue(null); setCompDiag(null); return }
     const controller = new AbortController()
     let previous = ''
+    let previousDiag = ''
     const update = (next: Snapshot) => {
       if (controller.signal.aborted) return
       const serialized = JSON.stringify(next)
       if (serialized === previous) return
       previous = serialized; setSnapshot(next); setError('')
     }
-    setSnapshot(null); setError('')
+    const updateDiag = (session: ChampSelectSession) => {
+      if (controller.signal.aborted) return
+      const nextDiag = analyzeChampSelectSession(session)
+      const serialized = JSON.stringify(nextDiag)
+      if (serialized === previousDiag) return
+      previousDiag = serialized
+      setCompDiag(nextDiag)
+    }
+    setSnapshot(null); setCompDiag(null); setError('')
     let receivedEvent = false
     let latestChampSelect: ChampSelectSession | null = null
-    let fallbackQueueId = 0
+    let fallbackQueue: { id?: number; name?: string; gameMode?: string; isCustom?: boolean; mapId?: number } | null = null
     let queueLoaded = false
     const updateChampSelect = (session: ChampSelectSession) => {
       latestChampSelect = session
-      if (session.queueId > 0 || queueLoaded) update(bpSnapshot(session, party, fallbackQueueId))
+      updateDiag(session)
+      if (session.queueId > 0 || queueLoaded) update(bpSnapshot(session, party, fallbackQueue))
     }
     let lobbyVersion=0
     const updateLobby=(lobby:Lobby)=>{const version=++lobbyVersion;return lobbySnapshot(lobby,controller.signal).then(next=>{if(version===lobbyVersion)update(next)})}
@@ -144,7 +170,7 @@ export function TeamHistoryModal({ open, onClose, mode, party = emptyParty, embe
       if (Array.isArray(data?.myTeam)) { receivedEvent = true; updateChampSelect(data) }
     }) : undefined
     if (mode === 'bp') void deadline(() => lcu.getGameflowSession(), controller.signal, 10000).then((session) => {
-      fallbackQueueId = session.gameData?.queue?.id || 0
+      fallbackQueue = session.gameData?.queue ?? null
     }).catch(() => {}).finally(() => {
       queueLoaded = true
       if (latestChampSelect) updateChampSelect(latestChampSelect)
@@ -158,9 +184,26 @@ export function TeamHistoryModal({ open, onClose, mode, party = emptyParty, embe
   const queueId = selectedQueue ?? snapshot?.queueId ?? 0
   const queues = getPlayableQueues().filter((queue) => queue.id > 0).map(({ id, name }) => ({ id, name }))
   if (snapshot && snapshot.queueId > 0 && !queues.some((queue) => queue.id === snapshot.queueId)) {
-    queues.push({ id: snapshot.queueId, name: snapshot.queueName || getQueueName(snapshot.queueId) })
+    const candidateName = (snapshot.queueName || getQueueName(snapshot.queueId)).trim()
+    if (!queues.some((queue) => queue.name.trim() === candidateName)) {
+      queues.push({ id: snapshot.queueId, name: candidateName })
+    }
   }
   const playerCount = snapshot?.teams.reduce((total, team) => total + team.members.length, 0) ?? 0
+  const tagFeatureEnabled = usePlayerTagFeatureEnabled()
+  const encounterAlertEnabled = useEncounterAlertEnabled()
+  const resolvedSelfPuuid = useMemo(
+    () => getPuuid() || snapshot?.teams.flatMap((t) => t.members).find((m) => m.self)?.puuid || '',
+    [snapshot],
+  )
+  const selfPages = useHistoryPages(resolvedSelfPuuid, 0, count, Boolean(open && encounterAlertEnabled && resolvedSelfPuuid), undefined, revision)
+  const encounterMap = useMemo(
+    () => encounterAlertEnabled ? buildEncounterLookup(selfPages.games, resolvedSelfPuuid) : new Map<string, RecentEncounterSummary>(),
+    [encounterAlertEnabled, selfPages.games, resolvedSelfPuuid],
+  )
+  const handleOpenTagEditor = useCallback((puuid: string, name: string) => {
+    setTagTarget({ puuid, name })
+  }, [])
   return <>
     <HistoryFrame embedded={embedded} open={open} onClose={onClose} careerBackground width="min(1550px, 95vw)" height={mode === 'bp' ? 'min(560px, 92vh)' : 'min(900px, 92vh)'}>
       <div className="rh-shell rh-team-shell" data-testid={mode === 'bp' ? 'bp-history' : 'game-history'}>
@@ -173,8 +216,11 @@ export function TeamHistoryModal({ open, onClose, mode, party = emptyParty, embe
               {queues.map((queue) => <option key={queue.id} value={queue.id}>{queue.name}</option>)}
             </HistorySelect>
             <HistorySelect className="rh-team-count" aria-label="队伍查询场次" value={count} onChangeValue={(value) => setCount(Number(value))}>
-              {[20, 50, 100].map((n) => <option key={n} value={n}>每人 {n} 场</option>)}
+              {[20, 50, 100].map((n) => <option key={n} value={n}>{n}场</option>)}
             </HistorySelect>
+            {tagFeatureEnabled && <HistoryAssetTooltip title="玩家小本本" compact asChild>
+              <button type="button" className="rh-button rh-team-icon-button" aria-label="玩家小本本" onClick={() => setShowTagBook(true)}><span aria-hidden="true"><TagBookIcon /></span></button>
+            </HistoryAssetTooltip>}
             <HistoryAssetTooltip title="刷新" compact asChild>
               <button type="button" className="rh-button rh-team-icon-button" aria-label="刷新" onClick={() => setRevision((n) => n + 1)}><span aria-hidden="true"><RefreshIcon /></span></button>
             </HistoryAssetTooltip>
@@ -185,17 +231,23 @@ export function TeamHistoryModal({ open, onClose, mode, party = emptyParty, embe
         </header>
         <div className="rh-team-body rh-scroll-area" ref={bodyRef}>
           {error ? <div className="rh-error" role="alert">{error}<button type="button" onClick={() => setRevision((n) => n + 1)}>重试</button></div> : !snapshot ? <div className="rh-empty"><span className="rh-spinner" />读取当前对局…</div> : !playerCount ? <div className="rh-empty">客户端还未提供参赛者信息，可稍后刷新。</div> :
-            <div className="rh-team-groups">
-              {snapshot.teams.map((team) => (
-                <TeamSection key={team.id} team={team} queueId={queueId} count={count} open={open} hidden={hidden}
-                  onInspect={(puuid, name) => setTarget({ puuid, name })} onMatch={setSelectedMatch} revision={revision} />
-              ))}
-            </div>}
+            <>
+              {mode === 'bp' && compDiagEnabled && compDiag && <CompDiagnosticBar diagnostic={compDiag} />}
+              <div className="rh-team-groups">
+                {snapshot.teams.map((team) => (
+                  <TeamSection key={team.id} team={team} queueId={queueId} count={count} open={open} hidden={hidden}
+                    encounterMap={encounterMap} selfPuuid={resolvedSelfPuuid} onTagPlayer={handleOpenTagEditor}
+                    onInspect={(puuid, name) => setTarget({ puuid, name })} onMatch={setSelectedMatch} revision={revision} />
+                ))}
+              </div>
+            </>}
         </div>
         <HistoryScrollTop targets={scrollTargets} resetKey={`${open}:${mode}:${revision}`} />
       </div>
     </HistoryFrame>
     <HistoryDisplaySettings open={open && showSettings} onClose={() => setShowSettings(false)} initialSection="team" />
+    <PlayerTagEditorModal open={Boolean(open && tagFeatureEnabled && tagTarget)} target={tagTarget} onClose={() => setTagTarget(null)} />
+    <PlayerTagBookModal open={Boolean(open && tagFeatureEnabled && showTagBook)} onClose={() => setShowTagBook(false)} onInspectPlayer={(puuid, name) => setTarget({ puuid, name })} />
     <Modal open={Boolean(open && selectedMatch)} onClose={() => setSelectedMatch(null)} careerBackground width="min(1200px, 95vw)" height="min(720px, 88vh)">
       {selectedMatch && (
         <div className="rh-shell rh-team-match-detail">
@@ -209,8 +261,9 @@ export function TeamHistoryModal({ open, onClose, mode, party = emptyParty, embe
   </>
 }
 
-function TeamSection({ team, queueId, count, open, hidden, onInspect, onMatch, revision }: {
+function TeamSection({ team, queueId, count, open, hidden, encounterMap, selfPuuid, onTagPlayer, onInspect, onMatch, revision }: {
   team: Team; queueId: number; count: number; open: boolean; hidden: HistoryHiddenFields
+  encounterMap: ReadonlyMap<string, RecentEncounterSummary>; selfPuuid: string; onTagPlayer: (puuid: string, name: string) => void
   onInspect: (puuid: string, name: string) => void; onMatch: (match: HistoryMatch) => void
   revision: number
 }) {
@@ -244,8 +297,11 @@ function TeamSection({ team, queueId, count, open, hidden, onInspect, onMatch, r
       <div className="rh-team-cards">
         {team.members.map((member) => {
           const party = member.premade ? parties.indexOf(member.premade) : -1
+          const premadeLabel = party >= 0 ? String.fromCharCode(65 + party) : undefined
+          const isSelfCard = Boolean(member.self || (selfPuuid && member.puuid === selfPuuid))
+          const encounter = !isSelfCard && !premadeLabel && member.puuid ? encounterMap.get(member.puuid) : undefined
           return <TeamPlayerCard key={member.key} member={member} queueId={queueId} count={count} open={open} hidden={hidden}
-            premade={party >= 0 ? String.fromCharCode(65 + party) : undefined} revision={revision}
+            premade={premadeLabel} isSelf={isSelfCard} encounter={encounter} onTagPlayer={onTagPlayer} revision={revision}
             onInspect={onInspect} onMatch={onMatch} updateSummary={updateSummary} />
         })}
       </div>
@@ -253,12 +309,16 @@ function TeamSection({ team, queueId, count, open, hidden, onInspect, onMatch, r
   )
 }
 
-const TeamPlayerCard = memo(function TeamPlayerCard({ member, queueId, count, open, hidden, premade, onInspect, onMatch, updateSummary, revision }: {
+const TeamPlayerCard = memo(function TeamPlayerCard({ member, queueId, count, open, hidden, premade, isSelf, encounter, onTagPlayer, onInspect, onMatch, updateSummary, revision }: {
   member: Member; queueId: number; count: number; open: boolean; hidden: HistoryHiddenFields; premade?: string
+  isSelf?: boolean; encounter?: RecentEncounterSummary; onTagPlayer: (puuid: string, name: string) => void
   onInspect: (puuid: string, name: string) => void; onMatch: (match: HistoryMatch) => void
   updateSummary: (key: string, stats: PlayerSummary | null) => void
   revision: number
 }) {
+  const tagFeatureEnabled = usePlayerTagFeatureEnabled()
+  const encounterAlertEnabled = useEncounterAlertEnabled()
+  const playerTag = usePlayerTag(tagFeatureEnabled ? member.puuid : '')
   const [profile, setProfile] = useState<SummonerInfo | null>(null)
   const [ranks, setRanks] = useState<HistoryRank[] | null>(null)
   const [rankLoading, setRankLoading] = useState(true)
@@ -275,7 +335,7 @@ const TeamPlayerCard = memo(function TeamPlayerCard({ member, queueId, count, op
     if (showRanks) void fetchHistoryRanks(member.puuid, controller.signal, undefined, revision > 0).then((value) => { if (!controller.signal.aborted) setRanks(value) }).catch(() => {}).finally(() => { if (!controller.signal.aborted) setRankLoading(false) })
     return () => controller.abort()
   }, [open, member.puuid, revision, showRanks])
-  const matches = useMemo(() => toHistoryMatches(pages.games, member.puuid).filter((m) => !queueId || m.game.json.queueId === queueId), [pages.games, member.puuid, queueId])
+  const matches = useMemo(() => toHistoryMatches(pages.games, member.puuid).filter((m) => !queueId || isMatchingQueue(m.game, queueId)), [pages.games, member.puuid, queueId])
   const allValid = useMemo(() => validMatches(matches), [matches])
   const selectedMatches = useMemo(()=>championFilter ? matches.filter((match)=>match.player.championId===championFilter) : matches,[matches,championFilter])
   const allStats = useMemo(() => summarize(matches), [matches])
@@ -342,15 +402,55 @@ const TeamPlayerCard = memo(function TeamPlayerCard({ member, queueId, count, op
           </span>}
         </span>
       </button>
+      {member.puuid && !isSelf && (tagFeatureEnabled || (encounterAlertEnabled && Boolean(encounter && encounter.total > 0))) && (
+        <div className="rh-team-alerts">
+          {tagFeatureEnabled && playerTag && (
+            <PlayerTagBadge
+              puuid={member.puuid}
+              record={playerTag}
+              onClick={() => onTagPlayer(member.puuid, name)}
+            />
+          )}
+          {encounterAlertEnabled && <EncounterAlertBadge encounter={encounter} />}
+          {tagFeatureEnabled && (
+            <HistoryAssetTooltip title={playerTag ? `编辑标记：${playerTag.label}` : '标记该玩家'} compact asChild>
+              <button
+                type="button"
+                className={`rh-mini-tag-btn${playerTag ? ' is-tagged' : ''}`}
+                aria-label={`标记 ${name}`}
+                onClick={() => onTagPlayer(member.puuid, name)}
+              >
+                <TagBookmarkIcon filled={Boolean(playerTag)} />
+              </button>
+            </HistoryAssetTooltip>
+          )}
+        </div>
+      )}
       {!member.puuid ? <div className="rh-card-state">玩家身份暂不可查询</div>
         : pages.loading ? <div className="rh-card-state"><span className="rh-spinner" />查询中…</div>
         : pages.error ? <div className="rh-card-state">战绩查询失败<button type="button" className="rh-text-button" onClick={pages.refresh}>重试</button></div>
         : stats.total === 0 ? <div className="rh-card-state">本范围暂无有效记录</div>
         : <>
           {(show('winRate') || show('kda')) && <div className="rh-team-card-stats">
-            {show('winRate') && <strong className={(stats.winRate ?? 0) >= 0.5 ? 'rh-team-positive' : 'rh-team-negative'}>
-              {percentText(stats.winRate)} <small>({stats.total})</small>
-            </strong>}
+            {show('winRate') && (
+              <HistoryAssetTooltip
+                title={`有效对局 ${stats.total} 场（${stats.wins}胜 ${stats.losses}负）`}
+                description={
+                  !pages.hasMore && stats.total < count && queueId > 0
+                    ? `已加载该模式全部历史匹配记录${stats.excluded > 0 ? `（另排除 ${stats.excluded} 场重开/异常局）` : ''}；自定义房间对局请切换右上角为「全部模式」查看`
+                    : stats.excluded > 0
+                      ? `已排除 ${stats.excluded} 场重开或异常终止对局`
+                      : undefined
+                }
+                compact={stats.total >= count && stats.excluded === 0}
+                focusable={false}
+                asChild
+              >
+                <strong className={(stats.winRate ?? 0) >= 0.5 ? 'rh-team-positive' : 'rh-team-negative'}>
+                  {percentText(stats.winRate)} <small>({stats.total})</small>
+                </strong>
+              </HistoryAssetTooltip>
+            )}
             {show('kda') && <strong>{numberText(stats.kda, 2)} <small>KDA</small></strong>}
           </div>}
           <div className="rh-team-tags">
@@ -361,7 +461,7 @@ const TeamPlayerCard = memo(function TeamPlayerCard({ member, queueId, count, op
           </div>
           {show('champions') && <ChampionStrip matches={allValid} limit={9} selectedId={championFilter} onSelect={(id)=>setChampionFilter((current)=>current===id?0:id)} />}
           {show('recent') && <div className="rh-team-recent-list rh-scroll-area" aria-label="最近对局" ref={recentRef}>
-            {valid.slice(0, 8).map((match) => (
+            {valid.map((match) => (
               <button type="button" className={`rh-team-match rh-team-match-${match.outcome}`} key={match.id}
                 aria-label="打开这场对局的详细战报" onClick={() => onMatch(match)}>
                 <HistoryImage src={getChampIcon(match.player.championId)} label={championName(match.player.championId)} />

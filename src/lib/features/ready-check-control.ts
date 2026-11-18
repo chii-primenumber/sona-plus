@@ -15,7 +15,7 @@
  *      直接调用 lcu.acceptMatch()/declineMatch()，并通知自动接受模块（拒绝暂停、接受恢复）。
  */
 
-import { logger } from '@/index'
+import { logger } from '@/lib/logger'
 import { lcu, LcuEventUri } from '@/lib/lcu'
 import type { ReadyCheck, LCUEventMessage, GameflowPhase } from '@/lib/lcu'
 import { notifyUserManuallyAccepted, notifyUserManuallyDeclined } from '@/lib/features/auto-accept'

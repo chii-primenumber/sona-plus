@@ -17,7 +17,7 @@ import {
   decodeSonaStatusPayload,
   stripAvatarStatusPayload,
 } from '@/lib/features/beautify-client/avatar-status-sync'
-import { logger } from '@/index'
+import { logger } from '@/lib/logger'
 import { useI18n } from '@/i18n'
 import '@/styles/SettingsPage.css'
 

@@ -6,7 +6,7 @@
  * 客户端反复弹出也会被持续清掉。
  */
 
-import { logger } from '@/index'
+import { logger } from '@/lib/logger'
 import { injector } from '@/lib/InjectorManager'
 
 const POPUP_SELECTOR = 'iframe#tv-official-pop'

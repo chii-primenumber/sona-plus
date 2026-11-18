@@ -38,6 +38,7 @@ export function initSonaTooltips() {
     removalObserver.observe(document.body, { childList: true, subtree: true })
     if (!tooltipRoot) {
       const host = document.createElement('div')
+      host.dataset.sonaOwned = 'true'
       document.body.append(host)
       tooltipRoot = createRoot(host)
     }

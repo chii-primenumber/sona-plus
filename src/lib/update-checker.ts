@@ -1,7 +1,8 @@
 declare const __PLUGIN_VERSION__: string
 declare const __PLUGIN_RELEASE_NOTES__: string
 
-import { logger } from '@/index'
+import { logger } from '@/lib/logger'
+import { getCorsProxyCandidates } from '@/lib/cors-proxy'
 import { store } from '@/lib/store'
 
 export interface UpdateInfo {
@@ -32,10 +33,6 @@ export interface UpdateState {
 const RELEASE_PAGE_URL = 'https://github.com/chii-primenumber/sona-plus/releases'
 const GITHUB_API_LATEST = 'https://api.github.com/repos/chii-primenumber/sona-plus/releases/latest'
 const GITHUB_API_RELEASES = 'https://api.github.com/repos/chii-primenumber/sona-plus/releases'
-
-function wrapCorsProxy(targetUrl: string): string {
-  return `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`
-}
 let state: UpdateState = {
   status: 'idle',
   info: null,
@@ -102,8 +99,9 @@ async function fetchLatestRelease(): Promise<GithubReleaseResponse> {
   const errors: string[] = []
   const candidates: Array<{ url: string; kind: 'single' | 'array' }> = [
     { url: GITHUB_API_LATEST, kind: 'single' },
-    { url: wrapCorsProxy(GITHUB_API_LATEST), kind: 'single' },
-    { url: wrapCorsProxy(GITHUB_API_RELEASES), kind: 'array' },
+    { url: GITHUB_API_RELEASES, kind: 'array' },
+    ...getCorsProxyCandidates(GITHUB_API_LATEST).map((url) => ({ url, kind: 'single' as const })),
+    ...getCorsProxyCandidates(GITHUB_API_RELEASES).map((url) => ({ url, kind: 'array' as const })),
   ]
 
   for (const { url, kind } of candidates) {

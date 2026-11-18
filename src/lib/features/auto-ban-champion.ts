@@ -1,10 +1,11 @@
-import { logger } from '@/index'
+import { logger } from '@/lib/logger'
 import { store } from '@/lib/store'
 import { lcu, LcuEventUri } from '@/lib/lcu'
 import type { ChampSelectSession, GameflowPhase, LCUEventMessage } from '@/lib/lcu'
 import type { ChampSelectAction } from '@/types/lcu'
 import { sleep } from '@/lib/utils'
 import { getChampionById, getQueue } from '@/lib/assets'
+import { resolvePresetChampionIds } from '@/lib/champselect-enhancements'
 import { translate } from '@/i18n'
 
 const AUTO_BAN_MAX_ATTEMPTS = 600
@@ -24,8 +25,24 @@ async function notifyAutoBanSuccess(championId: number) {
   }
 }
 
-function getConfiguredChampionIds(): number[] {
-  return [...new Set(store.get('autoBanChampionIds').filter((id) => id > 0))]
+function hasAnyConfiguredBanChampion(): boolean {
+  if (store.get('autoBanChampionIds').some((id) => id > 0)) return true
+  if (!store.get('champSelectPresetSwitch')) return false
+  const presets = store.get('champSelectPresets')
+  return Object.values(presets ?? {}).some((entry) => entry?.banIds?.some((id) => id > 0))
+}
+
+function getConfiguredChampionIdsForSession(session: ChampSelectSession): number[] {
+  const localPlayer = session.myTeam.find((player) => player.cellId === session.localPlayerCellId)
+  const queue = getQueue(session.queueId)
+  return resolvePresetChampionIds('ban', {
+    presetEnabled: store.get('champSelectPresetSwitch'),
+    presets: store.get('champSelectPresets'),
+    defaultIds: store.get('autoBanChampionIds'),
+    gameMode: queue?.gameMode,
+    queueId: session.queueId,
+    assignedPosition: localPlayer?.assignedPosition,
+  }).ids
 }
 
 async function getOptionalIdSet(loader: () => Promise<number[]>): Promise<Set<number> | null> {
@@ -59,7 +76,7 @@ function collectUnavailableBanIds(session: ChampSelectSession): Set<number> {
 }
 
 async function resolveTargetChampionId(session: ChampSelectSession): Promise<number | null> {
-  const championIds = getConfiguredChampionIds()
+  const championIds = getConfiguredChampionIdsForSession(session)
   if (championIds.length === 0) return null
 
   const [rawBannableIds, disabledIds] = await Promise.all([
@@ -146,7 +163,7 @@ let autoBanRunToken = 0
 let autoBanRunPromise: Promise<void> | null = null
 
 async function tryAutoBanChampion(runToken: number, reason: string) {
-  if (getConfiguredChampionIds().length === 0) {
+  if (!hasAnyConfiguredBanChampion()) {
     logger.warn('[AutoBan] 未设置目标英雄队列')
     return
   }

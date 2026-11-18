@@ -110,3 +110,10 @@ export function createLogger(options: LoggerOptions) {
     debug: (msg: string, ...args: unknown[]) => log('debug', msg, ...args),
   }
 }
+
+declare const __PLUGIN_VERSION__: string | undefined
+
+export const logger = createLogger({
+  name: 'Sona Plus',
+  version: typeof __PLUGIN_VERSION__ === 'string' ? __PLUGIN_VERSION__ : '1.2.0',
+})

@@ -1,4 +1,4 @@
-import { logger } from '@/index'
+import { logger } from '@/lib/logger'
 import { deobfuscateChampSelectPuuid } from '@/lib/champ-select-puuid'
 import { injector } from '@/lib/InjectorManager'
 import { lcu, LcuEventUri } from '@/lib/lcu'
