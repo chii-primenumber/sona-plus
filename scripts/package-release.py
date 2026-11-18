@@ -116,6 +116,8 @@ def package(pengu_zip, output):
     (bundle / 'Install-Sona.ps1').write_text(ps_text, encoding='utf-8-sig', newline='\r\n')
     cmd_text = (ROOT / 'installer/Install.cmd').read_text(encoding='utf-8')
     (bundle / '一键安装.cmd').write_text(cmd_text, encoding='utf-8', newline='\r\n')
+    # Zero-byte extensionless visual hint file at root so users immediately see what to click without opening docs.
+    (bundle / '“双击一键安装cmd”即可一键安装(需要管理员权限)').write_bytes(b'')
     (bundle / '安装说明.txt').write_text((ROOT / 'installer/INSTALL.md').read_text(encoding='utf-8'), encoding='utf-8-sig', newline='\r\n')
     loader = bundle / 'PenguLoader'
     loader.mkdir()

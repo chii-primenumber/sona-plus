@@ -55,6 +55,8 @@ if($BundleRoot){
     Assert-Check ($raw[0]-eq 239 -and $raw[1]-eq 187 -and $raw[2]-eq 191) 'packaged script has UTF8 BOM for Windows PowerShell 5.1'
     $cmdRaw=[IO.File]::ReadAllBytes((Join-Path $BundleRoot '一键安装.cmd'))
     Assert-Check ($cmdRaw[0]-ne 239) 'packaged cmd launcher has no UTF8 BOM for cmd.exe'
+    $hintPath=Join-Path $BundleRoot '“双击一键安装cmd”即可一键安装(需要管理员权限)'
+    Assert-Check ((Test-Path -LiteralPath $hintPath -PathType Leaf) -and (Get-Item -LiteralPath $hintPath).Length -eq 0 -and [IO.Path]::GetExtension($hintPath) -eq '') 'packaged zero-byte extensionless install hint placeholder exists'
     $updRaw=[IO.File]::ReadAllBytes((Join-Path $BundleRoot 'sona\Update-Sona.ps1'))
     Assert-Check ($updRaw[0]-eq 239 -and $updRaw[1]-eq 187 -and $updRaw[2]-eq 191) 'packaged in-folder updater script has UTF8 BOM for PowerShell 5.1'
     $updCmdRaw=[IO.File]::ReadAllBytes((Join-Path $BundleRoot 'sona\双击更新SonaPlus.cmd'))
