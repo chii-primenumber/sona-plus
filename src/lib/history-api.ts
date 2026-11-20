@@ -90,6 +90,15 @@ export async function fetchHistoryMastery(puuid: string, signal?: AbortSignal, f
   return entries.filter((m) => m && m.championId > 0 && typeof m.championPoints === 'number').sort((a, b) => b.championPoints - a.championPoints)
 }
 
+export function fetchMatchTimeline(gameId: number, signal?: AbortSignal): Promise<unknown> {
+  const endpoint = `/lol-match-history/v1/game-timelines/${encodeURIComponent(String(gameId))}`
+  return historyRequests.run(`timeline:${gameId}`, (sharedSignal) => deadline(async (requestSignal) => {
+    const response = await fetch(endpoint, { signal: requestSignal, headers: { Accept: 'application/json' } })
+    if (!response.ok) throw new Error(`时间线暂不可用 (${response.status})`)
+    return response.json() as Promise<unknown>
+  }, sharedSignal, 10000), { signal, ttlMs: 300000 })
+}
+
 export const RANK_NAMES: Record<string, string> = { IRON: '坚韧黑铁', BRONZE: '英勇黄铜', SILVER: '不屈白银', GOLD: '荣耀黄金', PLATINUM: '华贵铂金', EMERALD: '流光翡翠', DIAMOND: '璀璨钻石', MASTER: '超凡大师', GRANDMASTER: '傲世宗师', CHALLENGER: '最强王者', UNRANKED: '未定级' }
 function rankStanding(tier: unknown, division: unknown): RankStanding | undefined {
   const name = typeof tier === 'string' ? tier.toUpperCase() : ''

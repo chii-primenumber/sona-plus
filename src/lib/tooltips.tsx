@@ -3,6 +3,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { TooltipBubble } from '@/components/ui/HistoryAssetTooltip'
 
 const PLUGIN_SURFACES = '#sona-root, .sona-modal-overlay, .sobp, .sona-entry-btn, .sona-profile-history-entry, [data-sona-team-history], [data-sona-opgg-preselect-build], [data-sona-opgg-ingame-build]'
+const TOOLTIP_ANCHORS = '[title], [data-sona-tooltip], [data-sona-overflow-tooltip]'
 let initialized = false
 let tooltipRoot: Root | undefined
 let active: HTMLElement | undefined
@@ -21,9 +22,11 @@ export function initSonaTooltips() {
     tooltipRoot?.render(null)
   }
   function show(event: Event) {
-    const element = event.target instanceof Element ? event.target.closest<HTMLElement>('[title], [data-sona-tooltip]') : null
+    const element = event.target instanceof Element ? event.target.closest<HTMLElement>(TOOLTIP_ANCHORS) : null
     if (!(element instanceof HTMLElement) || !element.closest(PLUGIN_SURFACES)) { hide(); return }
+    const overflowText = element.dataset.sonaOverflowTooltip
     const text = element.getAttribute('title') || element.dataset.sonaTooltip
+      || (overflowText && (element.scrollWidth > element.clientWidth + 1 || element.scrollHeight > element.clientHeight + 1) ? overflowText : undefined)
     if (!text) { hide(); return }
     if (event instanceof MouseEvent && event.type === 'mouseover' && !(event.relatedTarget instanceof Node && element.contains(event.relatedTarget))) dismissed.delete(element)
     if (dismissed.has(element)) { hide(); return }
@@ -31,11 +34,15 @@ export function initSonaTooltips() {
     if (element.hasAttribute('title')) {
       element.dataset.sonaTooltip = text
       element.removeAttribute('title')
-      if (!element.hasAttribute('aria-description')) element.setAttribute('aria-description', text)
+      if (!element.hasAttribute('aria-description') || element.dataset.sonaTitleManaged === '1') {
+        element.dataset.sonaTitleManaged = '1'
+        element.setAttribute('aria-description', text)
+      }
     }
     active = element
     activeText = text
-    removalObserver.observe(document.body, { childList: true, subtree: true })
+    removalObserver.disconnect()
+    removalObserver.observe(element.closest(PLUGIN_SURFACES) ?? document.body, { childList: true, subtree: true })
     if (!tooltipRoot) {
       const host = document.createElement('div')
       host.dataset.sonaOwned = 'true'
@@ -48,12 +55,12 @@ export function initSonaTooltips() {
     }))
   }
   function leave(event: MouseEvent | FocusEvent) {
-    const element = event.target instanceof Element ? event.target.closest<HTMLElement>('[title], [data-sona-tooltip]') : null
+    const element = event.target instanceof Element ? event.target.closest<HTMLElement>(TOOLTIP_ANCHORS) : null
     if (element && !(event.relatedTarget instanceof Node && element.contains(event.relatedTarget))) dismissed.delete(element)
     if (active && !(event.relatedTarget instanceof Node && active.contains(event.relatedTarget))) hide()
   }
   function activate(event: Event) {
-    const element = event.target instanceof Element ? event.target.closest<HTMLElement>('[title], [data-sona-tooltip]') : null
+    const element = event.target instanceof Element ? event.target.closest<HTMLElement>(TOOLTIP_ANCHORS) : null
     if (element?.closest(PLUGIN_SURFACES)) { dismissed.add(element); hide() }
   }
   function key(event: KeyboardEvent) {

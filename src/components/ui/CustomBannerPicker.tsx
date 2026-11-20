@@ -184,9 +184,8 @@ export function CustomBannerPicker({ open, onClose, selectedBannerKey, onApplyBa
                   className={`scb-card ${isApplied ? 'scb-card--applied' : ''}`}
                   type="button"
                   onClick={() => handleApply(banner)}
-                  title={`${banner.name} · ID ${banner.id}`}
                 >
-                  <span className="scb-card-img-wrap">
+                  <span className="scb-card-img-wrap" data-sona-tooltip={`ID ${banner.id}`}>
                     <img
                       className="scb-card-img"
                       src={banner.assetPath}
@@ -196,7 +195,7 @@ export function CustomBannerPicker({ open, onClose, selectedBannerKey, onApplyBa
                     <span className="scb-card-hover">点击应用</span>
                     {isApplied && <span className="scb-card-badge">使用中</span>}
                   </span>
-                  <span className="scb-card-name">{banner.name}</span>
+                  <span className="scb-card-name" data-sona-overflow-tooltip={banner.name}>{banner.name}</span>
                 </button>
               )
             })}

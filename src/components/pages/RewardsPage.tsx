@@ -231,7 +231,6 @@ export function RewardsPage() {
                   className={`sona-reward-item${isSelected ? ' sona-reward-item--selected' : ''}`}
                   onClick={() => toggle(grant, reward.id)}
                   disabled={busy}
-                  title={name}
                 >
                   {isSelected && <span className="sona-reward-item-check" aria-hidden>✓</span>}
                   <span className="sona-reward-item-thumb">
@@ -242,7 +241,7 @@ export function RewardsPage() {
                       <span className="sona-reward-item-qty">{t('rewards.quantity', { count: reward.quantity })}</span>
                     )}
                   </span>
-                  <span className="sona-reward-item-name">{name}</span>
+                  <span className="sona-reward-item-name" data-sona-overflow-tooltip={name}>{name}</span>
                 </button>
               )
             })}

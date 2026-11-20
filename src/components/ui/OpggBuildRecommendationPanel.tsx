@@ -1,12 +1,14 @@
 import {matchesMatchupChampion} from '@/lib/matchup-search'
+import { createSearchIndex, findHighlightRange, matchesSearchIndex, tokenizeSearchQuery } from '@/lib/pinyin-search'
 import { SampleFilter, useRecommendationPreferences } from './RecommendationControls'
 import { hasEnoughSamples, sampleThreshold } from '@/lib/recommendation-filter'
-import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { createContext, useContext, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { GameDescription } from './GameDescription'
 import { PositionIcon } from './PositionIcon'
 import { CareerBackdrop } from './CareerBackdrop'
 import { HistoryAssetTooltip } from './HistoryAssetTooltip'
+import { SearchIcon } from './icons'
 import { SonaSelect } from '@/components/ui/SonaSelect'
 import { SonaSegmented } from './SonaSegmented'
 import tier1Icon from '@/../assets/tier/t1.svg'
@@ -32,7 +34,7 @@ import {
 } from '@/lib/assets'
 import { lcu } from '@/lib/lcu'
 import { getRankedMiniCrest } from '@/lib/ranked-assets'
-import { type OpggItemBuild, type OpggMatchup, type OpggMode, type OpggPosition, type OpggRuneBuild, type OpggTier } from '@/lib/opgg-api'
+import { type OpggItemBuild, type OpggMatchup, type OpggMode, type OpggPosition, type OpggRuneBuild, type OpggSkillRecommendation, type OpggTier } from '@/lib/opgg-api'
 import { translate, useI18n } from '@/i18n'
 import '@/styles/OpggBuildRecommendationPanel.css'
 
@@ -99,6 +101,7 @@ export interface BuildRecommendation {
   prismItems: OpggItemBuild[]
   lastItems: OpggItemBuild[]
   runePages: OpggRuneBuild[]
+  skills?: { priority?: OpggSkillRecommendation; order?: OpggSkillRecommendation }
   matchups: OpggMatchup[]
   augments: Array<{
     rarity: number
@@ -131,6 +134,8 @@ export interface OpggBuildRecommendationPanelProps {
   koreanMatchups?: { items: OpggMatchup[]; version?: string; metric?:'win'|'lane';onSelect?:(id:number)=>void }
   hideClose?:boolean
   onSwitchToHistory?:()=>void
+  onApplyCoreBuild?: (build: OpggItemBuild) => Promise<void>
+  embedded?: boolean
 }
 
 export function OpggBuildRecommendationPanel({
@@ -144,21 +149,23 @@ export function OpggBuildRecommendationPanel({
   onClose,
   koreanMatchups,
   onSwitchToHistory,
+  onApplyCoreBuild,
+  embedded = false,
   hideClose=false,
 }: OpggBuildRecommendationPanelProps) {
   const { t } = useI18n()
   const {preferences,change}=useRecommendationPreferences()
   const equipmentOrder=preferences.equipmentOrder
   const setEquipmentOrder=(order:'pick'|'win')=>change({equipmentOrder:order})
+  const itemMinSample = sampleThreshold(preferences, 'items')
   const recommendation=useMemo(()=>{
     if (!sourceRecommendation) return sourceRecommendation
-    const minimum=sampleThreshold(preferences,'items')
     const result={...sourceRecommendation}
-    for (const key of ['starterItems','boots','coreItems','prismItems','lastItems'] as const) result[key]=sortRecommendationBuilds((sourceRecommendation[key] ?? []).filter(row=>hasEnoughSamples(row.play,minimum)),equipmentOrder)
+    for (const key of ['starterItems','boots','coreItems','prismItems','lastItems'] as const) result[key]=sortRecommendationBuilds((sourceRecommendation[key] ?? []).filter(row=>hasEnoughSamples(row.play,itemMinSample)),equipmentOrder)
     result.runePages=(sourceRecommendation.runePages ?? []).filter(row=>hasEnoughSamples(row.play,sampleThreshold(preferences,'runes')))
     result.augments=(sourceRecommendation.augments ?? []).map(group=>({...group,items:(group.items ?? []).filter(row=>hasEnoughSamples(row.sampleCount,sampleThreshold(preferences,'augments')))}))
     return result
-  },[sourceRecommendation,preferences])
+  },[sourceRecommendation,preferences,itemMinSample,equipmentOrder])
   const champion = getChampionById(context.championId)
   const championName = champion ? `${champion.title} ${champion.name}` : t('opgg.unrecognizedChampion')
   const queueText = recommendation?.modeLabel || (context.queueId > 0 ? getQueueName(context.queueId) : t('opgg.unknownQueue'))
@@ -167,15 +174,31 @@ export function OpggBuildRecommendationPanel({
     ? ['OP.GG', '韩服单双排', formatPositionText(positionText), koreanMatchups.version && `${koreanMatchups.version} 版本`].filter(Boolean).join(' · ')
     : [queueText, formatPositionText(positionText), recommendation?.sourceLabel].filter(Boolean).join(' · ')
   const mayhem = isKiwiMode(context) || context.queueId === 2400
-  const coreItems = useMemo(()=>sortRecommendationBuilds(recommendation?.coreItems??[],equipmentOrder),[recommendation?.coreItems,equipmentOrder,mayhem])
-  const lastItems = useMemo(()=>sortRecommendationBuilds(recommendation?.lastItems??[],equipmentOrder),[recommendation?.lastItems,equipmentOrder,mayhem])
-  const boots = useMemo(()=>sortRecommendationBuilds(recommendation?.boots??[],equipmentOrder),[recommendation?.boots,equipmentOrder,mayhem])
+  const sourceCoreCount = useMemo(() => normalizeCoreItemBuilds(sourceRecommendation?.coreItems).length, [sourceRecommendation?.coreItems])
+  const coreBuilds = useMemo(() => normalizeCoreItemBuilds(recommendation?.coreItems), [recommendation?.coreItems])
+  const lastItems = recommendation?.lastItems ?? []
+  const boots = recommendation?.boots ?? []
+  const prismItems = recommendation?.prismItems ?? []
+  const coreEmptyText = sourceCoreCount > 0 && !coreBuilds.length && itemMinSample > 0
+    ? `≥${itemMinSample}场 无核心装 · 点「全部」查看`
+    : undefined
   const showAugments = mayhem || recommendation?.mode === 'arena'
   const showEarlyItems = mayhem || recommendation?.mode === 'ranked' || getQueue(context.queueId)?.mapId === 11
   const showPositionFilter = !!koreanMatchups || supportsPositionFilter(context, recommendation)
+  const coreContextKey = `${context.championId}:${context.queueId}:${context.gameMode}:${positionText}`
+  const applyCoreBuild = sourceRecommendation
+    ? async (build: OpggItemBuild) => {
+        if (onApplyCoreBuild) {
+          await onApplyCoreBuild(build)
+          return
+        }
+        const { applyManagedItemSetBuild } = await import('@/lib/features/opgg-build-recommendation')
+        await applyManagedItemSetBuild({ ...context, position: positionText }, sourceRecommendation, build)
+      }
+    : undefined
 
   return (
-    <BaselineWinRate.Provider value={recommendation?.baselineWinRate ?? null}><RecommendationAssetContext.Provider value={recommendation?.assets ?? emptyAssets}><div className="sobp sobp--career">
+    <BaselineWinRate.Provider value={recommendation?.baselineWinRate ?? null}><RecommendationAssetContext.Provider value={recommendation?.assets ?? emptyAssets}><div className={`sobp sobp--career${embedded ? ' sobp--embedded' : ''}`}>
       <CareerBackdrop />
       <div className="sobp-ambient" />
 
@@ -223,6 +246,8 @@ export function OpggBuildRecommendationPanel({
               {!mayhem && <RuneSection title={t('opgg.section.runes')} runes={recommendation?.runePages} championName={championName} modeLabel={recommendation?.modeLabel || queueText} />}
               <SpellSection title={t('opgg.section.spells')} builds={recommendation?.summonerSpells} limit={MAX_RECOMMENDATION_ROWS} />
             </div>
+            {recommendation?.skills && (recommendation.skills.priority || recommendation.skills.order) &&
+              <SkillSection skills={recommendation.skills} arena={recommendation.mode === 'arena'} />}
             {recommendation && <div className="sobp-equipment-sort">
               <SampleFilter kind="items"/><span>装备排序</span><SonaSegmented value={equipmentOrder} options={EQUIPMENT_SORT_OPTIONS} onChange={setEquipmentOrder} label="装备排序" />
               {recommendation.sourceLabel && <small>核心选取率按全部核心样本统计；成装与鞋子使用单件总体统计。</small>}
@@ -231,7 +256,10 @@ export function OpggBuildRecommendationPanel({
               {!mayhem && <CompactEquipmentSection title="出门装推荐" builds={recommendation?.starterItems} />}
               <CompactEquipmentSection title="鞋子推荐" builds={boots} />
             </>}
-              <div className="sobp-core-builds" data-testid="three-item-builds"><ItemSection title="核心出装" builds={coreItems?.filter((build) => build.ids.length === 3 && build.ids.every((id) => Number.isInteger(id) && id > 0) && new Set(build.ids).size === 3)} itemLimit={3} /></div>
+            {recommendation?.mode === 'arena' && prismItems.length > 0 && (
+              <CompactEquipmentSection title="棱彩装备推荐" builds={prismItems} />
+            )}
+              <div className="sobp-core-builds" data-testid="three-item-builds"><ItemSection title="核心出装" builds={coreBuilds} emptyText={coreEmptyText} itemLimit={5} contextKey={coreContextKey} onApplyBuild={applyCoreBuild} /></div>
             <div className="sobp-trend-wrap">
               <LastItemTrendSection title="后续成装推荐" builds={lastItems} />
             </div>
@@ -254,11 +282,10 @@ function PositionFilterSelect({ value, onChange, allowUnselected }: {
   onChange: (position: OpggPosition) => void
   allowUnselected?: boolean
 }) {
-  const { t } = useI18n()
   const normalizedValue = OPGG_POSITION_VALUES.includes(value) ? value : allowUnselected ? 'none' : 'mid'
 
   return (
-    <div className="sobp-position-filter" title={t('opgg.position.select')}>
+    <div className="sobp-position-filter">
       <SonaSelect
         iconOnly
         value={normalizedValue}
@@ -377,7 +404,7 @@ function TierBadge({ value }: { value: string }) {
   const icon = getTierIcon(tier)
   if (!icon) return <span className="sobp-summary-value">{value}</span>
 
-  return <img className="sobp-tier-icon" src={icon} alt={value} title={value} />
+  return <img className="sobp-tier-icon" src={icon} alt={value} data-sona-tooltip={value} />
 }
 
 function getTierIcon(tier: number): string {
@@ -473,32 +500,120 @@ function Section({ title, children, empty = false, emptyText, count, toolbar, pa
   </section>
 }
 
-function ItemSection({ title, builds, itemLimit }: { title: string; builds?: OpggItemBuild[]; itemLimit: number }) {
+function normalizeCoreItemBuilds(builds: OpggItemBuild[] | undefined): OpggItemBuild[] {
+  return (builds ?? []).map((build) => {
+    const uniqueIds = [...new Set((build.ids ?? []).map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0))]
+    return { ...build, ids: uniqueIds }
+  }).filter((build) => build.ids.length >= 2)
+}
+
+function SkillSection({ skills, arena }: { skills: NonNullable<BuildRecommendation['skills']>; arena: boolean }) {
+  return <div className="sobp-skill-section"><Section title="技能加点">
+    <div className="sobp-skill-builds">
+      {(['priority', 'order'] as const).map((kind) => {
+        const build = skills[kind]
+        if (!build) return null
+        const ordered = kind === 'order'
+        const winRate = build.win != null && build.play > 0 ? build.win / build.play : null
+        return <div key={kind} className="sobp-skill-build" data-skill-kind={kind}>
+          <strong>{ordered ? '加点顺序' : '主升优先级'}</strong>
+          <ol className={`sobp-skill-keys${ordered ? ' sobp-skill-keys--order' : ' sobp-skill-keys--priority'}`}>
+            {build.keys.map((key, index) => <li key={index}>
+              <kbd className={`sobp-key-${key.toLowerCase()}${key === 'R' ? ' is-ultimate' : ''}`}>{key}</kbd>
+              {ordered ? <small>{index + 1}</small> : index < build.keys.length - 1 && <span className="sobp-skill-sep" aria-hidden="true">&gt;</span>}
+            </li>)}
+          </ol>
+          <span className="sobp-skill-sample">
+            <span>{build.play.toLocaleString()} 场</span>
+            {build.pickRate != null && <span>选取 <b className="is-gold">{formatPercent(build.pickRate)}</b></span>}
+            {arena && build.averagePlace != null
+              ? <span>均排 <b className={build.averagePlace <= 4 ? 'is-good' : 'is-bad'}>{formatPlace(build.averagePlace)}</b></span>
+              : winRate != null && <span>胜率 <b className={winRate >= 0.5 ? 'is-good' : 'is-bad'}>{formatPercent(winRate)}</b></span>}
+          </span>
+        </div>
+      })}
+    </div>
+  </Section></div>
+}
+
+function ItemSection({ title, builds, itemLimit, emptyText, contextKey, onApplyBuild }: {
+  title: string
+  builds?: OpggItemBuild[]
+  itemLimit: number
+  emptyText?: string
+  contextKey?: string
+  onApplyBuild?: (build: OpggItemBuild) => Promise<void>
+}) {
+  const { t } = useI18n()
   const getItemInfo = useItemInfo()
   const visibleBuilds = builds ?? []
   const maxRate = getMaxPickRate(visibleBuilds, 0.15)
+  const [applyingKey, setApplyingKey] = useState('')
+  const [appliedKey, setAppliedKey] = useState('')
+  const [applyErrorKey, setApplyErrorKey] = useState('')
+
+  useEffect(() => {
+    setApplyingKey('')
+    setAppliedKey('')
+    setApplyErrorKey('')
+  }, [contextKey])
+
+  const handleApply = async (build: OpggItemBuild, key: string) => {
+    if (!onApplyBuild) return
+    setApplyingKey(key)
+    setAppliedKey('')
+    setApplyErrorKey('')
+    try {
+      await onApplyBuild(build)
+      setAppliedKey(key)
+    } catch {
+      setApplyErrorKey(key)
+    } finally {
+      setApplyingKey('')
+    }
+  }
 
   return (
-    <Section title={title} empty={visibleBuilds.length === 0} count={visibleBuilds.length}>
-      {(limit)=>visibleBuilds.slice(0,limit).map((build, index) => (
-        <div className="sobp-row" key={`${index}-${build.ids.join('-')}`}>
-          <div className="sobp-row-main">
-            <RankBadge rank={index + 1} />
-            <div className="sobp-icons sobp-icons--items">
-              {build.ids.slice(0, itemLimit).map((id, itemIndex, ids) => {
-                const item = getItemInfo(id)
-                return (
-                  <span className="sobp-icon-step" key={`${id}-${itemIndex}`}>
-                    <BuildIcon src={item.iconPath} title={item.name} description={item.description} price={item.price} size={32} />
-                    {itemIndex < ids.length - 1 && <span className="sobp-arrow">▶</span>}
-                  </span>
-                )
-              })}
+    <Section title={title} empty={visibleBuilds.length === 0} emptyText={emptyText} count={visibleBuilds.length}>
+      {(limit)=>visibleBuilds.slice(0,limit).map((build, index) => {
+        const applyKey = `${index}-${build.ids.join('-')}`
+        return (
+          <div className="sobp-row" key={applyKey}>
+            <div className="sobp-row-main">
+              <RankBadge rank={index + 1} />
+              <div className="sobp-icons sobp-icons--items">
+                {build.ids.slice(0, itemLimit).map((id, itemIndex, ids) => {
+                  const item = getItemInfo(id)
+                  return (
+                    <span className="sobp-icon-step" key={`${id}-${itemIndex}`}>
+                      <BuildIcon src={item.iconPath} title={item.name} description={item.description} price={item.price} size={32} />
+                      {itemIndex < ids.length - 1 && <span className="sobp-arrow">▶</span>}
+                    </span>
+                  )
+                })}
+              </div>
+            </div>
+            <div className="sobp-item-actions">
+              <RecommendationStats build={build} maxRate={maxRate} />
+              {onApplyBuild && (
+                <button
+                  type="button"
+                  data-testid="apply-core-build"
+                  data-sona-tooltip="置顶写入商店方案"
+                  className={`sobp-apply-rune${appliedKey === applyKey ? ' sobp-apply-rune--done' : ''}${applyErrorKey === applyKey ? ' sobp-apply-rune--error' : ''}`}
+                  disabled={applyingKey === applyKey}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    void handleApply(build, applyKey)
+                  }}
+                >
+                  {applyingKey === applyKey ? t('opgg.applying') : appliedKey === applyKey ? '已写入' : applyErrorKey === applyKey ? t('common.failed') : t('common.apply')}
+                </button>
+              )}
             </div>
           </div>
-          <RecommendationStats build={build} maxRate={maxRate} />
-        </div>
-      ))}
+        )
+      })}
     </Section>
   )
 }
@@ -609,7 +724,7 @@ function MatchupGroup({ title, items, tone,metric,onSelect }: { title: string; i
             <div className="sobp-matchup" key={`${tone}-${item.championId}`}>
               <button type="button" className="sobp-matchup-avatar" disabled={!onSelect} aria-label={`查看${championName}对位详情`} onClick={()=>onSelect?.(item.championId)}><img className="sobp-matchup-icon" src={`/lol-game-data/assets/v1/champion-icons/${item.championId}.png`} alt="" /></button>
               <div className="sobp-matchup-info">
-                <span className="sobp-matchup-name" title={championName}>{championName}</span>
+                <span className="sobp-matchup-name" data-sona-overflow-tooltip={championName}>{championName}</span>
                 <span className="sobp-matchup-detail">
                   <span className={`sobp-matchup-rate sobp-matchup-rate--${tone}`}>{metric==='lane'?'线杀 ':''}{formatPercent(item.winRate)}</span>
                   {metric!=='lane'&&<span className="sobp-matchup-play">{item.play.toLocaleString()}场</span>}
@@ -630,6 +745,12 @@ function RuneSection({ title, runes, championName, modeLabel }: { title: string;
   const [applyingKey, setApplyingKey] = useState('')
   const [appliedKey, setAppliedKey] = useState('')
   const [applyErrorKey, setApplyErrorKey] = useState('')
+
+  useEffect(() => {
+    setApplyingKey('')
+    setAppliedKey('')
+    setApplyErrorKey('')
+  }, [championName, modeLabel])
 
   const applyRune = async (rune: OpggRuneBuild, index: number) => {
     const key = `${index}-${rune.id}`
@@ -715,27 +836,76 @@ function RuneSection({ title, runes, championName, modeLabel }: { title: string;
 
 const AUGMENT_TYPES = [{value:0,label:'全部'},{value:8,label:'棱彩'},{value:4,label:'黄金'},{value:1,label:'白银'}] as const
 
+function renderHighlightedText(text: string, query: string): ReactNode {
+  const range = findHighlightRange(text, query)
+  if (!range) return text
+  const [start, end] = range
+  return (
+    <>
+      {text.slice(0, start)}
+      <mark className="sobp-search-hit">{text.slice(start, end)}</mark>
+      {text.slice(end)}
+    </>
+  )
+}
+
 function AugmentSection({ title, groups }: { title: string; groups?: BuildRecommendation['augments'] }) {
   const assets = useContext(RecommendationAssetContext)
   const [rarity, setRarity] = useState(0)
+  const [search, setSearch] = useState('')
+  const deferredSearch = useDeferredValue(search)
   const {preferences,change}=useRecommendationPreferences()
   const sorted=useMemo(()=>[...new Map((groups ?? []).flatMap((group) => group.items.map((item) => ({...item, rarity: group.rarity, rarityLabel: group.label ?? getAugmentRarityLabel(group.rarity)}))).map((item) => [item.id,item])).values()]
     .sort((a,b) => { const rate=(value:unknown)=>typeof value==='number'&&Number.isFinite(value)?value:-1; return (preferences.augmentOrder==='pick'?rate(b.pickRate)-rate(a.pickRate):rate(b.winRate)-rate(a.winRate)) || rate(b.pickRate)-rate(a.pickRate) || a.id-b.id }),[groups,preferences.augmentOrder])
-  const entries=useMemo(()=>rarity?sorted.filter((item)=>item.rarity===rarity):sorted,[sorted,rarity])
+  const indexedRarityEntries=useMemo(()=>{
+    const list = rarity ? sorted.filter((item)=>item.rarity===rarity) : sorted
+    return list.map((item) => {
+      const info = assets.augments[item.id] ?? getAugmentInfo(item.id)
+      return {
+        item,
+        info,
+        index: createSearchIndex([info?.name, info?.description, item.rarityLabel, String(item.id)]),
+      }
+    })
+  },[sorted, rarity, assets.augments])
+  const trimmedSearch = search.trim() ? deferredSearch.trim() : ''
+  const entries=useMemo(()=>{
+    if (!trimmedSearch) return indexedRarityEntries
+    const tokens = tokenizeSearchQuery(trimmedSearch)
+    return indexedRarityEntries.filter((entry) => matchesSearchIndex(tokens, entry.index))
+  },[indexedRarityEntries, trimmedSearch])
   const toolbar=<div className="sobp-augment-filters">
     <SampleFilter kind="augments"/>
     <SonaSegmented value={rarity} options={AUGMENT_TYPES} onChange={setRarity} label="海克斯类型" className="sobp-augment-switch" thumbClassName="sobp-augment-switch-thumb" />
-    <SonaSegmented value={preferences.augmentOrder} options={EQUIPMENT_SORT_OPTIONS} onChange={order=>change({augmentOrder:order})} label="海克斯排序"/><small>{entries.length} 个</small>
+    <SonaSegmented value={preferences.augmentOrder} options={EQUIPMENT_SORT_OPTIONS} onChange={order=>change({augmentOrder:order})} label="海克斯排序"/>
+    <div className="sobp-augment-search">
+      <span className="sobp-augment-search-icon" aria-hidden="true"><SearchIcon /></span>
+      <input
+        type="search"
+        aria-label="搜索海克斯强化"
+        placeholder="搜强化 / 拼音"
+        value={search}
+        onChange={(event) => setSearch(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape' && search) {
+            event.stopPropagation()
+            setSearch('')
+          }
+        }}
+      />
+      {search && <button type="button" className="sobp-augment-search-clear" aria-label="清空海克斯搜索" onClick={() => setSearch('')}>×</button>}
+    </div>
+    <small className="sobp-augment-count">{trimmedSearch ? <><b>{entries.length}</b>/{indexedRarityEntries.length}</> : `${entries.length} 个`}</small>
   </div>
   return <div className="sobp-augment-wrap sobp-augments-compact">
-    <Section title={title} empty={!entries.length} count={entries.length} toolbar={toolbar} partialLimit={12}>
+    <Section title={title} empty={!entries.length} emptyText={trimmedSearch ? `无匹配「${trimmedSearch}」` : undefined} count={entries.length} toolbar={toolbar} partialLimit={trimmedSearch ? 999 : 12}>
       {(limit)=><div className="sobp-augment-grid">
-        {entries.slice(0,limit).map((augment,index) => {
-          const info=assets.augments[augment.id] ?? getAugmentInfo(augment.id)
-          return <div className="sobp-augment" key={augment.id} data-rarity={augment.rarity}>
-            <BuildIcon src={info?.iconPath ?? ''} title={info?.name ?? String(augment.id)} description={info?.description ?? ''} subtitle={augment.rarityLabel} size={26} border={getAugmentBorder(info?.rarity)} />
+        {entries.slice(0,limit).map(({ item: augment, info },index) => {
+          const augmentName = info?.name ?? String(augment.id)
+          return <div className={`sobp-augment${trimmedSearch ? ' sobp-augment--matched' : ''}`} key={augment.id} data-rarity={augment.rarity}>
+            <BuildIcon src={info?.iconPath ?? ''} title={augmentName} description={info?.description ?? ''} subtitle={augment.rarityLabel} size={26} border={getAugmentBorder(info?.rarity)} />
             <div className="sobp-augment-info">
-              <div className="sobp-augment-name"><small>#{index+1}</small> {info?.name ?? String(augment.id)} <small>{augment.rarityLabel}</small></div>
+              <div className="sobp-augment-name"><small>#{index+1}</small> {trimmedSearch ? renderHighlightedText(augmentName, trimmedSearch) : augmentName} <small>{augment.rarityLabel}</small></div>
               <RecommendationRates pickRate={augment.pickRate} winRate={augment.winRate} maxRate={1} />
               {Number.isFinite(augment.averagePlace) && <div className="sobp-augment-meta">均排 {formatPlace(augment.averagePlace)}</div>}
             </div>
@@ -859,6 +1029,26 @@ function IconTooltip({
   const [position, setPosition] = useState<TooltipPosition>({ left: 0, top: 0, arrowLeft: 0, placement: 'top', ready: false })
 
   useEffect(() => () => { if (closeTimerRef.current != null) window.clearTimeout(closeTimerRef.current) }, [])
+  useEffect(() => {
+    if (!mounted) return
+    const closeImmediately = () => {
+      if (closeTimerRef.current != null) window.clearTimeout(closeTimerRef.current)
+      closeTimerRef.current = null
+      setVisible(false)
+      setMounted(false)
+    }
+    const onVisibility = () => { if (document.hidden) closeImmediately() }
+    window.addEventListener('scroll', closeImmediately, { capture: true, passive: true })
+    window.addEventListener('resize', closeImmediately)
+    window.addEventListener('blur', closeImmediately)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.removeEventListener('scroll', closeImmediately, true)
+      window.removeEventListener('resize', closeImmediately)
+      window.removeEventListener('blur', closeImmediately)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [mounted])
 
   useLayoutEffect(() => {
     if (!mounted || !anchorRef.current || !tooltipRef.current) return

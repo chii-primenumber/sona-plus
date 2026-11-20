@@ -1,9 +1,10 @@
 import { SonaSegmented } from './SonaSegmented'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { HistoryAssetTooltip } from './HistoryAssetTooltip'
+import { HistoryAssetTooltip, type TooltipStat } from './HistoryAssetTooltip'
 import { HistoryReplayButton } from './HistoryReplayButton'
 import { HistoryPlayerName } from './HistoryPlayerName'
 import { HistoryRuneDetails } from './HistoryRuneDetails'
+import { HistoryTimelinePanel } from './HistoryTimelinePanel'
 import { PlayerTagBadge, PlayerTagEditorModal, TagBookmarkIcon, type PlayerTagTarget } from './PlayerTagWidgets'
 import { evaluateMatchMvpAndScores } from '@/lib/postgame-intel'
 import { usePlayerTagFeatureEnabled, usePlayerTags, usePostgameEnhancementEnabled } from '@/lib/player-tags'
@@ -18,6 +19,7 @@ import { useHistoryHiddenFields, useHistoryPerformanceFields } from '@/lib/use-h
 import { PERFORMANCE_STATS, performanceText, performanceMatchForPlayer, performanceSummary } from '@/lib/history-performance'
 import { calculatePlayerScore, playerScoreLabel, formatPlayerScore } from '@/lib/player-score'
 import { usePlayerScoreSystem } from '@/lib/use-player-score'
+import { getChampionCombatProfile } from '@/lib/comp-diagnostic'
 import type { SgpGameSummaryLol, SgpParticipantLol } from '@/types/sgp'
 
 export function HistoryImage({ src, label, className = '', nativeTooltip = true }: {
@@ -56,14 +58,14 @@ export function RankCards({ ranks, status }: { ranks: HistoryRank[] | null; stat
           {total > 0 && <small>胜率 {((rank.wins ?? 0) / total * 100).toFixed(1)}%</small>}
         </span>
         <span className="rh-rank-card-main">
-          <HistoryImage src={getRankedEmblem(rank.tier)} label={name} className="rh-rank-crest" />
+          <HistoryImage src={getRankedEmblem(rank.tier)} label={name} className="rh-rank-crest" nativeTooltip={false} />
           <span className="rh-rank-card-data">
             <strong className={`rh-rank-${rank.tier.toLowerCase()}`}>{name}</strong>
             {ranks && rank.tier !== 'UNRANKED' && <small>{numberText(rank.wins)} 胜{rank.losses != null && ` ${numberText(rank.losses)} 负`} · {numberText(rank.lp)} LP</small>}
             {ranks && <span className="rh-rank-peak">
               <span>赛季最高</span>
               {rank.peak ? <>
-                <HistoryImage src={getRankedMiniCrest(rank.peak.tier)} label={rankText(rank.peak)} className="rh-rank-peak-crest" />
+                <HistoryImage src={getRankedMiniCrest(rank.peak.tier)} label={rankText(rank.peak)} className="rh-rank-peak-crest" nativeTooltip={false} />
                 <b>{rankText(rank.peak)}</b>
               </> : <span>—</span>}
             </span>}
@@ -81,7 +83,7 @@ export function RankCards({ ranks, status }: { ranks: HistoryRank[] | null; stat
         ['上赛季最高', selected.previousPeak],
         ['上赛季结算', selected.previousEnd],
       ] as const).map(([label, rank]) => <div key={label}><dt>{label}</dt><dd>{rank ? <>
-        <HistoryImage src={getRankedMiniCrest(rank.tier)} label={rankText(rank)} />
+        <HistoryImage src={getRankedMiniCrest(rank.tier)} label={rankText(rank)} nativeTooltip={false} />
         <strong>{rankText(rank)}</strong>
         {label === '当前段位' && selected.tier !== 'UNRANKED' && selected.lp != null && <small>{selected.lp} LP</small>}
       </> : '—'}</dd></div>)}</dl>
@@ -106,7 +108,7 @@ export function SummaryStats({ matches, compact = false }: { matches: HistoryMat
     ] as Array<[string, string]> : []),
   ]
   return <dl className={`rh-stats ${compact ? 'rh-stats-compact' : ''}`}>{metrics.map(([label, value, hint]) =>
-    <HistoryAssetTooltip key={label} title={hint || label} compact focusable={false} asChild><div><dt>{label}</dt><dd>{value}</dd></div></HistoryAssetTooltip>)}</dl>
+    <div key={label} data-sona-tooltip={hint}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
 }
 
 export function ChampionStrip({ matches, onSelect, selectedId, limit = 5 }: {
@@ -120,32 +122,47 @@ export function ChampionStrip({ matches, onSelect, selectedId, limit = 5 }: {
     selected={selectedId === item.id} onSelect={onSelect} />)}</div>
 }
 
-function ChampionStripItem({ item, selected, onSelect }: { item: ReturnType<typeof championStats>[number]; selected: boolean; onSelect?: (id:number)=>void }) {
+type ChampionSummary = ReturnType<typeof championStats>[number]
+
+function championFocus({ id, games }: ChampionSummary) {
+  const riftGames = games.filter((match) => match.game.json.mapId === 11)
+  const mostlyRift = riftGames.length * 2 >= games.length
+  const playsPosition = (position: string) => mostlyRift && riftGames.filter((match) => match.position === position).length * 2 > riftGames.length
+  const roles = getChampionById(id)?.roles?.map((role) => role.toLowerCase()) ?? []
+  const { frontline, outputWeight, tag } = getChampionCombatProfile(id, roles)
+  const vision = mostlyRift ? ['visionMinute', 'wardsKilled'] : []
+  if (playsPosition('JUNGLE')) return { label: '打野', keys: ['objectives', 'neutralCs', 'damageMinute', ...vision] }
+  if (frontline >= .7 && playsPosition('UTILITY')) return { label: '开团辅助', keys: ['takenMinute', 'control', 'assists', 'deaths', ...vision] }
+  if (frontline >= .7) return { label: '前排', keys: ['takenMinute', 'mitigated', 'control', 'deaths'] }
+  if (outputWeight <= .42) return { label: '保护辅助', keys: ['allyHeal', 'shield', 'assists', 'control', ...vision] }
+  if (playsPosition('UTILITY')) return { label: '辅助', keys: ['control', 'assists', 'damageMinute', ...vision] }
+  if (roles.includes('marksman') || tag.includes('射手')) return { label: '射手', keys: ['damageGold', 'damageMinute', 'goldMinute', 'csMinute'] }
+  if (roles.includes('assassin') || tag.includes('刺客')) return { label: '刺客', keys: ['soloKills', 'killShare', 'damageGold', 'deaths'] }
+  if (roles.includes('fighter') || frontline >= .5) return { label: '战士', keys: ['turretDamage', 'takenMinute', 'damageGold', 'damageMinute'] }
+  return { label: tag, keys: ['damageGold', 'damageMinute', 'goldMinute', 'control'] }
+}
+
+function ChampionStripItem({ item, selected, onSelect }: { item: ChampionSummary; selected: boolean; onSelect?: (id:number)=>void }) {
   const [requested,setRequested] = useState(false)
   const system = usePlayerScoreSystem()
   const selectable = Boolean(onSelect)
   const details = useMemo(()=>{
-    if (!requested) return {rows:[],footer:undefined}
+    if (!requested) return {rows:[],role:undefined,footer:undefined}
     const score = calculatePlayerScore(item.games.map((match)=>match.game),item.games[0]?.player.puuid || '',system)
-    const performance = new Map(performanceSummary(item.games,['damageGold','damageMinute','goldMinute'],'team').map((entry)=>[entry.stat.key,entry.value]))
+    const focus = championFocus(item)
+    const metrics = new Map(performanceSummary(item.games, focus.keys, 'team').map((entry) => [entry.stat.key, entry]))
+    const roleStats = focus.keys.flatMap((key) => {
+      const entry = metrics.get(key)
+      return entry?.value != null ? [{ label: entry.stat.label, value: performanceText(entry.stat, entry.value) }] : []
+    })
     return {rows:[
       {label:playerScoreLabel(system),value:score ? formatPlayerScore(score.score,system) : '—'},
       {label:'KDA',value:numberText(item.kda,2)},
       {label:'参团率',value:percentText(item.participation)},
-      {label:'伤转率',value:percentText(performance.get('damageGold'))},
-      {label:'伤害占比',value:percentText(item.damageShare)},
-      {label:'承伤占比',value:percentText(item.takenShare)},
-      {label:'经济占比',value:percentText(item.goldShare)},
-      {label:'场均金币',value:numberText(item.gold)},
-      {label:'场均伤害',value:numberText(item.damage)},
-      {label:'分均伤害',value:numberText(performance.get('damageMinute'))},
-      {label:'补刀 / 分',value:numberText(item.csPerMinute,1)},
-      {label:'金币 / 分',value:numberText(performance.get('goldMinute'))},
-      {label:'友方治疗',value:numberText(item.healing)},
-      {label:'友方护盾',value:numberText(item.shielding)},
-    ],footer:selectable ? (selected ? '再次点击显示全部英雄战绩' : '点击筛选该英雄战绩') : undefined}
+      ...roleStats,
+    ],role:focus.label,footer:selectable ? (selected ? '再次点击显示全部英雄战绩' : '点击筛选该英雄战绩') : undefined}
   },[requested,item,system,selected,selectable])
-  return <HistoryAssetTooltip title={championName(item.id)} icon={getChampIcon(item.id)} subtitle={`${item.total} 场 · ${item.wins} 胜 ${item.losses} 负 · 胜率 ${percentText(item.winRate)}`}
+  return <HistoryAssetTooltip title={championName(item.id)} icon={getChampIcon(item.id)} subtitle={`${item.total} 场 · ${item.wins} 胜 ${item.losses} 负 · ${percentText(item.winRate)}${details.role ? ` · ${details.role}` : ''}`}
     stats={details.rows} footer={details.footer} onShow={()=>setRequested(true)} focusable={false} asChild>
     <button type="button" onClick={()=>onSelect?.(item.id)} aria-pressed={onSelect ? selected : undefined}
       aria-label={`${championName(item.id)} · ${item.total} 场 · 胜率 ${percentText(item.winRate)}`} aria-disabled={!onSelect || undefined}>
@@ -252,6 +269,40 @@ const DAMAGE_LEGEND = [
   ['unknown', '未细分'],
 ] as const
 
+function damageAmounts(player: SgpParticipantLol, game: SgpGameSummaryLol, field: keyof typeof DAMAGE_FIELDS) {
+  return DAMAGE_FIELDS[field].map((key) => {
+    const value = metric(player, key, game)
+    return value != null && value >= 0 ? value : null
+  })
+}
+
+function MatchDamage({ match }: { match: HistoryMatch }) {
+  const field = 'totalDamageDealtToChampions'
+  const total = metric(match.player, field, match.game)
+  const [requested, setRequested] = useState(false)
+  const amounts = useMemo(() => damageAmounts(match.player, match.game, field), [match])
+  const stats = useMemo((): TooltipStat[] | undefined => {
+    if (!requested) return undefined
+    const valueText = (value: number | null) => value == null ? '—'
+      : total != null && total > 0 ? `${numberText(value)} · ${percentText(value / total)}` : numberText(value)
+    const rows: TooltipStat[] = DAMAGE_LEGEND.slice(0, 3).map(([tone, label], index) => ({
+      label, tone, value: valueText(amounts[index]),
+    }))
+    const sum = amounts.reduce<number>((result, value) => result + (value ?? 0), 0)
+    const allKnown = amounts.every((value) => value != null)
+    const remainder = total != null ? total - sum : 0
+    if (remainder > (allKnown ? 3 : 0)) rows.push({ label: '未细分', tone: 'unknown', value: valueText(remainder) })
+    return rows
+  }, [amounts, requested, total])
+  const content = <div className="rh-match-damage">
+    <strong>{percentText(match.damageShare)}</strong>
+    <small>{numberText(total)} 伤害</small>
+  </div>
+  if (amounts.every((amount) => amount == null)) return content
+
+  return <HistoryAssetTooltip title="对英雄伤害构成" stats={stats} statsLabel="对英雄伤害构成" onShow={() => setRequested(true)} focusable={false} asChild>{content}</HistoryAssetTooltip>
+}
+
 function ReportShare({ player, game, field, max }: {
   player: SgpParticipantLol; game: SgpGameSummaryLol; field: ShareMetric; max: number
 }) {
@@ -263,8 +314,11 @@ function ReportShare({ player, game, field, max }: {
     if (field === 'goldEarned') {
       segments = [{ color: 'gold', label: '金币', value: total }]
     } else {
-      const parts = DAMAGE_FIELDS[field].map((key) => Math.max(0, metric(player, key, game) ?? 0))
-      const remainder = Math.max(0, total - parts.reduce((sum, value) => sum + value, 0))
+      const rawParts = damageAmounts(player, game, field)
+      const parts = rawParts.map((value) => value ?? 0)
+      const allKnown = rawParts.every((value) => value != null)
+      const diff = total - parts.reduce((sum, value) => sum + value, 0)
+      const remainder = diff > (allKnown ? 3 : 0) ? diff : 0
       segments = DAMAGE_LEGEND.map(([color, label], index) => ({ color, label, value: parts[index] ?? remainder }))
     }
     const sum = segments.reduce((value, segment) => value + segment.value, 0)
@@ -345,6 +399,7 @@ function reportColumns(game: SgpGameSummaryLol, view: ReportView, show: (field: 
 
 export function MatchReport({ game, focusPuuid, onInspect }: { game: SgpGameSummaryLol; focusPuuid: string; onInspect?: (puuid: string, name: string) => void }) {
   const [view, setView] = useState<ReportView>('combat')
+  const [showTimeline, setShowTimeline] = useState(false)
   const [tagTarget, setTagTarget] = useState<PlayerTagTarget | null>(null)
   const hidden = useHistoryHiddenFields()
   const show = (field: ReportField) => isHistoryFieldVisible(hidden, 'report', field)
@@ -353,6 +408,7 @@ export function MatchReport({ game, focusPuuid, onInspect }: { game: SgpGameSumm
   const bars = view === 'combat' && show('bars')
   const damageLegend = bars && (show('damage') || show('taken'))
   const economyLegend = bars && show('gold')
+  const canShowTimeline = game.json.gameMode !== 'CHERRY' && typeof game.json.gameId === 'number' && game.json.gameId > 0
   const groups = new Map<number, SgpParticipantLol[]>()
   game.json.participants.forEach((p) => {
     const key = teamKey(p, game)
@@ -364,10 +420,26 @@ export function MatchReport({ game, focusPuuid, onInspect }: { game: SgpGameSumm
     <div className="rh-report-toolbar">
       <strong>战报 <b className="rh-report-count">{game.json.participants.length}<small> 人</small></b></strong>
       <span>版本 <b>{game.json.gameVersion?.split('.').slice(0,2).join('.') || '—'}</b></span>
+      {canShowTimeline && (
+        <button
+          type="button"
+          className={`rh-button rh-timeline-toggle${showTimeline ? ' is-active' : ''}`}
+          aria-expanded={showTimeline}
+          aria-label={showTimeline ? '收起经济曲线' : '经济曲线'}
+          data-sona-tooltip="经济差曲线与资源时间轴"
+          onClick={() => setShowTimeline((open) => !open)}
+        >
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+            <path d="M1.5 11.5 5.5 7l3 2.5L14.5 3.5" />
+          </svg>
+          {showTimeline ? '收起' : '经济'}
+        </button>
+      )}
       <SonaSegmented label="战报分组" value={view} onChange={setView} className="rh-report-switch" options={[
         {value:'combat',label:'战斗',ariaLabel:'战斗与经济'}, {value:'support',label:'支援',ariaLabel:'治疗、控制与视野'},
       ]} />
     </div>
+    {canShowTimeline && showTimeline && <HistoryTimelinePanel game={game} />}
     <div className="rh-table-scroll"><table className="rh-report-table"><thead><tr><th>玩家 / 英雄</th>
       {columns.map(({ key, label }) => <th key={key}>{label}</th>)}
     </tr></thead><tbody>
@@ -408,13 +480,13 @@ function TeamReportRows({ players, label, game, focusPuuid, onInspect, onTagPlay
       return <tr key={p.puuid || index} className={p.puuid === focusPuuid ? 'is-focus' : ''}>
         <td><div className="rh-report-player-cell">
           <button type="button" className="rh-player-link" disabled={!p.puuid || !onInspect} onClick={() => onInspect?.(p.puuid, pName)}>
-            <HistoryImage src={getChampIcon(p.championId)} label={championName(p.championId)} />
+            <HistoryImage src={getChampIcon(p.championId)} label={championName(p.championId)} nativeTooltip={false} />
             <span>
               <strong><HistoryPlayerName name={pName} showTag /></strong>
               <small>
                 <span>{championName(p.championId)}</span>
                 {perf?.award && (
-                  <span className={`rh-perf-award rh-perf-award--${perf.award.toLowerCase()}`} data-testid={`report-award-${perf.award.toLowerCase()}`} title={`本局表现评分 ${perf.score.toFixed(1)}`}>
+                  <span className={`rh-perf-award rh-perf-award--${perf.award.toLowerCase()}`} data-testid={`report-award-${perf.award.toLowerCase()}`}>
                     {perf.award} · {perf.score.toFixed(1)}
                   </span>
                 )}
@@ -458,12 +530,12 @@ export function HistoryMatchCard({ match, hidden, onInspect, expanded: controlle
   const placement = finite(player.subteamPlacement) || finite(player.placement)
   return <article className={`rh-match rh-match-${outcome}`}>
     <div className={`rh-match-main${show('roster') ? '' : ' rh-match-main-no-roster'}`}>
-      <div className="rh-match-hero"><button type="button" aria-label={`${championName(player.championId)} · 展开战报`} onClick={() => setExpanded(!expanded)}><HistoryImage src={getChampIcon(player.championId)} label={championName(player.championId)} /><small>{finite(player.champLevel) ?? '?'}</small></button><strong>{outcomeLabel}</strong>{game.json.gameMode === 'CHERRY' && placement && placement > 0 ? <small>第 {placement} 名</small> : null}</div>
+      <div className="rh-match-hero"><button type="button" aria-label={`${championName(player.championId)} · 展开战报`} onClick={() => setExpanded(!expanded)}><HistoryImage src={getChampIcon(player.championId)} label={championName(player.championId)} nativeTooltip={false} /><small>{finite(player.champLevel) ?? '?'}</small></button><strong>{outcomeLabel}</strong>{game.json.gameMode === 'CHERRY' && placement && placement > 0 ? <small>第 {placement} 名</small> : null}</div>
       <div className="rh-match-info">
         <div className="rh-match-stats">
           {show('spells') && <RunesAndSpells player={player} />}
           {show('kda') && <div><strong className="rh-kda">{numberText(finite(player.kills))} / <em>{numberText(finite(player.deaths))}</em> / {numberText(finite(player.assists))}</strong><small>KDA {numberText(match.kda, 2)} · 参团 {percentText(match.participation)}</small></div>}
-          {show('damage') && <div><strong>{percentText(match.damageShare)}</strong><small>{numberText(metric(player, 'totalDamageDealtToChampions', game))} 伤害</small></div>}
+          {show('damage') && <MatchDamage match={match} />}
           {show('cs') && <div><strong>{numberText(match.cs)} <small>补刀</small></strong><small>{numberText(match.csPerMinute, 1)} / 分钟</small></div>}
           {show('gold') && <div><strong>{numberText(metric(player, 'goldEarned', game))}</strong><small>金币 · {percentText(match.goldShare)}</small></div>}
         </div>

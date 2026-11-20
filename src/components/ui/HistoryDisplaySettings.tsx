@@ -8,9 +8,10 @@ import { store } from '@/lib/store'
 const SECTION_LABELS: Record<HistoryDisplaySection, string> = {
   team: '五人／双方总览',
   history: '个人详细战绩',
+  champions: '英雄统计',
   report: '单场详细战报',
 }
-const sections: HistoryDisplaySection[] = ['team', 'history', 'report']
+const sections: HistoryDisplaySection[] = ['team', 'history', 'champions', 'report']
 
 export function HistoryDisplaySettings({ open, onClose, initialSection }: {
   open: boolean
@@ -75,7 +76,7 @@ export function HistoryDisplaySettings({ open, onClose, initialSection }: {
               <input type="checkbox" checked={selected.includes(stat.key)} onChange={(event)=>toggleData(stat.key,event.target.checked)} />{stat.label}
             </label>)}
           </div></section>)}
-          {original.length > 0 && <section className="rh-display-group"><h3>默认显示项目</h3><div className="rh-display-group-fields">{original.map(([field, label]) => (
+          {original.length > 0 && <section className="rh-display-group"><h3>{section === 'champions' ? '基础数据列' : '默认显示项目'}</h3><div className="rh-display-group-fields">{original.map(([field, label]) => (
             <label key={field}>
               <input type="checkbox" checked={isHistoryFieldVisible(hidden, section, field)}
                 onChange={(event) => toggle(field, event.target.checked)} />

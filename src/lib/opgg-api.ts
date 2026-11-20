@@ -128,6 +128,67 @@ export interface OpggSkillMastery {
   builds: OpggSkillBuild[]
 }
 
+type SkillKey = 'Q' | 'W' | 'E' | 'R' | 'AD' | 'AS' | 'AR' | 'LETHALITY'
+export interface OpggSkillRecommendation {
+  keys: SkillKey[]
+  play: number
+  win?: number
+  pickRate?: number
+  averagePlace?: number
+}
+
+const VALID_SKILL_KEYS = new Set<SkillKey>(['Q', 'W', 'E', 'R', 'AD', 'AS', 'AR', 'LETHALITY'])
+
+function normalizeSkillKeys(raw: unknown): SkillKey[] | null {
+  if (!Array.isArray(raw) || !raw.length) return null
+  const keys: SkillKey[] = []
+  for (const item of raw) {
+    const normalized = typeof item === 'string' ? item.trim().toUpperCase() : ''
+    if (!VALID_SKILL_KEYS.has(normalized as SkillKey)) return null
+    keys.push(normalized as SkillKey)
+  }
+  return keys
+}
+
+function toSkillRecommendation(row: OpggSkillBuild | OpggSkillMastery, keys: SkillKey[]): OpggSkillRecommendation {
+  return {
+    keys,
+    play: row.play,
+    win: Number.isInteger(row.win) && row.win >= 0 && row.win <= row.play ? row.win : undefined,
+    pickRate: Number.isFinite(row.pick_rate) && row.pick_rate >= 0 && row.pick_rate <= 1 ? row.pick_rate : undefined,
+    averagePlace: row.total_place != null && Number.isFinite(row.total_place) && row.total_place >= row.play
+      ? row.total_place / row.play : undefined,
+  }
+}
+
+export function selectOpggSkillRecommendations(data: { skill_masteries?: OpggSkillMastery[]; skills?: OpggSkillBuild[] }) {
+  function mostPlayedRow<T extends OpggSkillBuild | OpggSkillMastery>(rows: T[] | undefined, read: (row: T) => unknown) {
+    let best: { row: T; recommendation: OpggSkillRecommendation } | undefined
+    for (const row of Array.isArray(rows) ? rows : []) {
+      if (!row || !Number.isInteger(row.play) || row.play <= (best?.recommendation.play ?? 0)) continue
+      const keys = normalizeSkillKeys(read(row))
+      if (!keys) continue
+      best = { row, recommendation: toSkillRecommendation(row, keys) }
+    }
+    return best
+  }
+  const bestMastery = mostPlayedRow(data.skill_masteries, (row) => row.ids)
+  const masteryOrder = mostPlayedRow(bestMastery?.row.builds, (row) => row.order)
+  let order = masteryOrder?.recommendation
+  if (order && order.averagePlace == null && Array.isArray(data.skills)) {
+    const signature = order.keys.join(',')
+    const matched = data.skills.find((row) => normalizeSkillKeys(row?.order)?.join(',') === signature)
+    if (matched && Number.isInteger(matched.play) && matched.play > 0 && matched.total_place != null && Number.isFinite(matched.total_place) && matched.total_place >= matched.play) {
+      order = { ...order, averagePlace: matched.total_place / matched.play }
+    }
+  }
+  if (!order) order = mostPlayedRow(data.skills, (row) => row.order)?.recommendation
+  return {
+    priority: bestMastery?.recommendation,
+    order,
+  }
+}
+
 export interface OpggTrendPoint {
   version: string
   rate: number

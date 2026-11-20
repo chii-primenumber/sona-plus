@@ -19,6 +19,7 @@ import { Modal } from '@/components/ui/Modal'
 import {GameToolsWorkspace} from '@/components/ui/GameToolsWorkspace'
 import type {TeamHistoryMode} from '@/components/ui/TeamHistoryModal'
 import { getAllChampions, getAugmentInfo, getChampionById, getItemInfo, getItemPrice, getQueue, getQueueName } from '@/lib/assets'
+import { buildItemSetBlocks as buildItemSetBlocksCore } from '@/lib/item-set-builder'
 import { OpggBuildRecommendationPanel, type BuildRecommendation, type RecommendationContext } from '@/components/ui/OpggBuildRecommendationPanel'
 import { lcu, LcuEventUri, type ChampSelectSession, type ItemSet, type ItemSetBlock, type LCUEventMessage, type RunePage, type RunePagePayload } from '@/lib/lcu'
 import { store } from '@/lib/store'
@@ -27,6 +28,7 @@ import {
   opggApi,
   mapAssignedPosition,
   mapOpggMatchups,
+  selectOpggSkillRecommendations,
   type OpggAugmentGroup,
   type OpggArenaModeChampion,
   type OpggChampion,
@@ -673,91 +675,8 @@ function trimRecommendationCache() {
   }
 }
 
-function toItemSetEntry(id: number) {
-  return {
-    id: String(id),
-    count: id === HEALTH_POTION_ID ? 2 : 1,
-  }
-}
-
-function normalizeItemIds(ids: number[]): number[] {
-  const seen = new Set<number>()
-  const normalized: number[] = []
-
-  for (const id of ids) {
-    const itemId = Number(id)
-    if (!Number.isFinite(itemId) || itemId <= 0 || seen.has(itemId)) continue
-    seen.add(itemId)
-    normalized.push(itemId)
-  }
-
-  return normalized
-}
-
-function flattenItemBuilds(builds: OpggItemBuild[]): number[] {
-  return normalizeItemIds(builds.flatMap((build) => build.ids))
-}
-
-/** 按装备总价从高到低排序（价格相同保持原有顺序） */
-function sortItemIdsByPriceDesc(itemIds: number[]): number[] {
-  return itemIds
-    .map((id, index) => ({ id, index, price: getItemPrice(id) }))
-    .sort((a, b) => b.price - a.price || a.index - b.index)
-    .map((entry) => entry.id)
-}
-
-function getItemBuildWinRate(build: OpggItemBuild): number {
-  if (typeof build.winRate === 'number' && Number.isFinite(build.winRate) && build.winRate >= 0 && build.winRate <= 1) return build.winRate
-  return build.play > 0 ? build.win / build.play : 0
-}
-
-function sortItemBuildsByWinRate(builds: OpggItemBuild[]): OpggItemBuild[] {
-  return [...builds].sort((a, b) => {
-    const winRateDiff = getItemBuildWinRate(b) - getItemBuildWinRate(a)
-    return winRateDiff || b.pick_rate - a.pick_rate || b.play - a.play
-  })
-}
-
-function createItemSetBlock(type: string, itemIds: number[]): ItemSetBlock | null {
-  const ids = normalizeItemIds(itemIds)
-  if (ids.length === 0) return null
-
-  return {
-    type,
-    items: ids.map(toItemSetEntry),
-  }
-}
-
-function appendItemSetBlock(blocks: ItemSetBlock[], type: string, itemIds: number[]): void {
-  const block = createItemSetBlock(type, itemIds)
-  if (block) blocks.push(block)
-}
-
-function buildItemSetBlocks(recommendation: BuildRecommendation): ItemSetBlock[] {
-  const blocks: ItemSetBlock[] = []
-  const starterItems = sortItemBuildsByWinRate(recommendation.starterItems)
-  const boots = sortItemBuildsByWinRate(recommendation.boots)
-  const prismItems = sortItemBuildsByWinRate(recommendation.prismItems)
-  const coreItems = sortItemBuildsByWinRate(recommendation.coreItems)
-  const lastItems = sortItemBuildsByWinRate(recommendation.lastItems)
-
-  starterItems.slice(0, 3).forEach((build, index) => {
-    appendItemSetBlock(blocks, `${index + 1}. 出门装`, build.ids)
-  })
-
-  appendItemSetBlock(blocks, `${blocks.length + 1}. 鞋子`, flattenItemBuilds(boots))
-
-  if (prismItems.length > 0) {
-    appendItemSetBlock(blocks, `${blocks.length + 1}. 棱彩装备`, flattenItemBuilds(prismItems))
-  }
-
-  coreItems.slice(0, 5).forEach((build, index) => {
-    appendItemSetBlock(blocks, `${blocks.length + 1}. 核心装 ${index + 1}`, build.ids)
-  })
-
-  appendItemSetBlock(blocks, `${blocks.length + 1}. 后续装备`, sortItemIdsByPriceDesc(flattenItemBuilds(lastItems)))
-
-  return blocks
+export function buildItemSetBlocks(recommendation: BuildRecommendation, preferredCoreBuild?: OpggItemBuild): ItemSetBlock[] {
+  return buildItemSetBlocksCore(recommendation, preferredCoreBuild, getItemPrice)
 }
 
 function getManagedItemSetUid(context: RecommendationContext): string {
@@ -806,8 +725,8 @@ function getSmartRunePageName(context: RecommendationContext): string {
   return `${getChampionName(context.championId)} ${getModeLabel(resolveOpggMode(context), context)} - Sona Plus`
 }
 
-function createManagedItemSet(context: RecommendationContext, recommendation: BuildRecommendation): ItemSet | null {
-  const blocks = buildItemSetBlocks(recommendation)
+function createManagedItemSet(context: RecommendationContext, recommendation: BuildRecommendation, preferredCoreBuild?: OpggItemBuild): ItemSet | null {
+  const blocks = buildItemSetBlocks(recommendation, preferredCoreBuild)
   if (blocks.length === 0) return null
 
   return {
@@ -1084,6 +1003,89 @@ function stopRunePagePolling(): void {
   }
   lastPolledRuneKey = ''
   lastPolledRuneSignature = ''
+}
+
+export async function applyManagedItemSetBuild(
+  context: RecommendationContext,
+  recommendation: BuildRecommendation,
+  preferredCoreBuild?: OpggItemBuild,
+): Promise<{ title: string; blocksCount: number }> {
+  const nextItemSet = createManagedItemSet(context, recommendation, preferredCoreBuild)
+  if (!nextItemSet) {
+    throw new Error('没有可写入的装备方案')
+  }
+
+  const summoner = await lcu.getSummonerInfo()
+  const wrapper = await lcu.getItemSets(summoner.summonerId)
+  const existingItemSets = Array.isArray(wrapper?.itemSets) ? wrapper.itemSets : []
+  const plan = planManagedItemSetUpsert(existingItemSets, [nextItemSet])
+
+  await lcu.putItemSets(summoner.summonerId, {
+    accountId: wrapper?.accountId ?? summoner.accountId ?? 0,
+    itemSets: plan.itemSets,
+    timestamp: Date.now(),
+  })
+
+  logger.info(
+    '[OPGG] 手动核心出装方案已写入：%s，blocks=%d',
+    nextItemSet.title,
+    nextItemSet.blocks.length,
+  )
+  return { title: nextItemSet.title, blocksCount: nextItemSet.blocks.length }
+}
+
+export async function fetchStandaloneRecommendation(
+  context: RecommendationContext,
+  tierOverride?: OpggTier,
+  signal?: AbortSignal,
+): Promise<BuildRecommendation | null> {
+  if (context.championId <= 0) return null
+  const snapshot = { ...context }
+  const effectiveTier = isKiwiMode(snapshot) || resolveOpggMode(snapshot) === 'arena'
+    ? 'all'
+    : normalizeOpggTier(tierOverride ?? getSelectedOpggTier())
+  const mode = resolveOpggMode(snapshot)
+  const position = mode === 'ranked'
+    ? (snapshot.position === 'none' ? FALLBACK_OPGG_POSITION : snapshot.position)
+    : 'none'
+  const key = [
+    snapshot.championId,
+    snapshot.queueId,
+    snapshot.gameMode || 'unknown',
+    mode,
+    position,
+    effectiveTier,
+  ].join(':')
+  const cached = recommendationCache.get(key)
+  if (cached && cached.data !== undefined && Date.now() - cached.updatedAt < (cached.error ? 5000 : RECOMMENDATION_TTL_MS)) {
+    if (cached.error) throw new Error(cached.error)
+    return cached.data
+  }
+  const data = await recommendationRequests.run(
+    key,
+    (sharedSignal) => loadRecommendation(snapshot, sharedSignal, effectiveTier),
+    { signal },
+  )
+  recommendationCache.set(key, {
+    key,
+    context: snapshot,
+    updatedAt: Date.now(),
+    promise: Promise.resolve(data),
+    controller: new AbortController(),
+    data,
+  })
+  trimRecommendationCache()
+  return data
+}
+
+export function getStoredOpggTier(): OpggTier {
+  return getSelectedOpggTier()
+}
+
+export function setStoredOpggTier(tier: OpggTier): OpggTier {
+  const next = normalizeOpggTier(tier)
+  store.set('opggBuildRecommendationTier', next)
+  return next
 }
 
 async function upsertRecommendedItemSet(context: RecommendationContext, recommendation: BuildRecommendation): Promise<void> {
@@ -1497,10 +1499,11 @@ async function loadRecommendation(context: RecommendationContext, signal?: Abort
     summonerSpells: normal?.data.summoner_spells ?? [],
     starterItems: data.starter_items ?? [],
     boots: data.boots ?? [],
-    coreItems: data.core_items ?? [],
+    coreItems: data.core_items?.length ? data.core_items : (normal?.data.mythic_items ?? []),
     prismItems: arena?.data.prism_items ?? [],
     lastItems: data.last_items ?? [],
     runePages: normal?.data.runes ?? [],
+    skills: selectOpggSkillRecommendations(data),
     matchups: normal ? mapOpggMatchups(normal.data.counters) : [],
     augments: mapOpggAugments(augmentGroups),
     meta: getRecommendationMeta(mainChampion),
@@ -1689,7 +1692,6 @@ function renderInGameBuildRecommendationModal(
   const handleTierChange = (tier: OpggTier) => {
     const nextTier = normalizeOpggTier(tier)
     store.set('opggBuildRecommendationTier', nextTier)
-    recommendationCache.delete(getRecommendationCacheKey(context))
     const nextEntry = ensureRecommendationPrefetch(context)
     const nextToken = ++inGameModalRenderToken
     renderInGameBuildRecommendationModal(context, nextEntry, nextToken)
@@ -1895,7 +1897,6 @@ async function openRecommendationPanel(anchor: HTMLElement, contextOverride?: Re
   const handleTierChange = (tier: OpggTier) => {
     const nextTier = normalizeOpggTier(tier)
     store.set('opggBuildRecommendationTier', nextTier)
-    recommendationCache.delete(getRecommendationCacheKey(context))
     const cacheEntry = ensureRecommendationPrefetch(context)
     if (cacheEntry) syncRecommendedItemSetWhenReady(cacheEntry)
     void openRecommendationPanel(anchor, context)

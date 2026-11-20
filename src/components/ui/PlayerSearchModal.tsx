@@ -185,7 +185,7 @@ function PlayerRow({ player, onSelect, card = false }: { player: HistoryPlayer; 
       {card && <small className="rh-search-avatar-level">{level ?? '—'}</small>}
       {status && <HistoryAssetTooltip title={status} compact focusable={false} asChild><i className={`rh-search-status rh-search-status-${player.availability}`} aria-label={status} /></HistoryAssetTooltip>}
     </span>
-    <span className="rh-search-identity"><span className="rh-search-name-line"><strong><HistoryPlayerName name={player.name} /></strong>
+    <span className="rh-search-identity"><span className="rh-search-name-line"><strong><HistoryPlayerName name={player.name} tooltip="overflow" /></strong>
       {!card && <small className="rh-search-level">lv.{level ?? '—'}</small>}</span>
       {(tag || player.serverId) && <small>{[tag && `#${tag}`, player.serverId && historyServerName(player.serverId)].filter(Boolean).join(' · ')}</small>}
     </span>

@@ -7,7 +7,7 @@ import { Sidebar, type SidebarItem } from '@/components/ui/Sidebar'
 import { HomePage } from '@/components/pages/HomePage'
 import { SettingsPage } from '@/components/pages/SettingsPage'
 import { UpdatePage } from '@/components/pages/UpdatePage'
-import { HomeIcon, GamepadIcon, PaletteIcon, SettingsIcon, InfoIcon, BugIcon, ZapIcon, GiftIcon } from '@/components/ui/icons'
+import { HomeIcon, GamepadIcon, PaletteIcon, SettingsIcon, InfoIcon, BugIcon, ZapIcon, GiftIcon, SwordsIcon } from '@/components/ui/icons'
 import { onModalVisibilityChange, isModalVisible, closeModal, openModal } from '@/lib/modal'
 import { store } from '@/lib/store'
 import { checkUpdatesInBackground, getUpdateState, onUpdateStateChange, type UpdateState } from '@/lib/update-checker'
@@ -15,6 +15,7 @@ import { useI18n } from '@/i18n'
 import type { TranslationKey } from '@/i18n'
 
 const ToolsPage = lazy(() => import('@/components/pages/ToolsPage').then((m) => ({ default: m.ToolsPage })))
+const BuildLookupPage = lazy(() => import('@/components/pages/BuildLookupPage').then((m) => ({ default: m.BuildLookupPage })))
 const BeautifyPage = lazy(() => import('@/components/pages/BeautifyPage').then((m) => ({ default: m.BeautifyPage })))
 const RewardsPage = lazy(() => import('@/components/pages/RewardsPage').then((m) => ({ default: m.RewardsPage })))
 const AboutPage = lazy(() => import('@/components/pages/AboutPage').then((m) => ({ default: m.AboutPage })))
@@ -23,6 +24,7 @@ const DebugPage = lazy(() => import('@/components/pages/DebugPage').then((m) => 
 const baseSidebarItemConfigs: Array<Omit<SidebarItem, 'label'> & { labelKey: TranslationKey }> = [
   { id: 'home', icon: <HomeIcon />, labelKey: 'nav.home' },
   { id: 'tools', icon: <GamepadIcon />, labelKey: 'nav.tools' },
+  { id: 'builds', icon: <SwordsIcon />, labelKey: 'nav.builds' },
   { id: 'rewards', icon: <GiftIcon />, labelKey: 'nav.rewards' },
   { id: 'beautify', icon: <PaletteIcon />, labelKey: 'nav.beautify' },
   { id: 'settings', icon: <SettingsIcon />, labelKey: 'nav.settings' },
@@ -45,6 +47,8 @@ function PageContent({ pageId }: { pageId: string }) {
       return <HomePage />
     case 'tools':
       return <ToolsPage />
+    case 'builds':
+      return <BuildLookupPage />
     case 'rewards':
       return <RewardsPage />
     case 'beautify':

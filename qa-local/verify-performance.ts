@@ -25,7 +25,8 @@ for (const row of performanceSummary(invalid,['damageGold','damageMinute'],'team
 }
 const native = game(6,600,500,200); native.sonaDataSource='lcu'
 native.json.participants[0].totalHealsOnTeammates=999
-for (const row of performanceSummary(toHistoryMatches([native],'tested'),['allyHeal','deadSeconds','deadShare'],'team')) assert.equal(row.value,null)
+native.json.participants[0].objectivesStolen=2
+for (const row of performanceSummary(toHistoryMatches([native],'tested'),['allyHeal','deadSeconds','deadShare','stolen'],'team')) assert.equal(row.value,null)
 const player = {...native.json.participants[0],puuid:'',goldEarned:100,totalDamageDealtToChampions:300}
 assert.equal(PERFORMANCE_STATS.find((stat)=>stat.key==='damageGold')!.read(performanceMatchForPlayer(native,player)),3)
 assert.equal(new Set(PERFORMANCE_STATS.map((stat)=>stat.key)).size,PERFORMANCE_STATS.length)

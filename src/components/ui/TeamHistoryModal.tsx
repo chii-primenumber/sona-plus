@@ -291,7 +291,7 @@ function TeamSection({ team, queueId, count, open, hidden, encounterMap, selfPuu
       <h3>
         <span className="rh-team-dot" aria-hidden="true" />{team.label}
         {showSummary && winRate != null && <HistoryAssetTooltip title="队伍平均胜率" compact focusable={false} asChild><strong>{percentText(winRate)}</strong></HistoryAssetTooltip>}
-        {showSummary && kda != null && <HistoryAssetTooltip title="队伍平均 KDA" compact focusable={false} asChild><small>{numberText(kda, 2)} KDA</small></HistoryAssetTooltip>}
+        {showSummary && kda != null && <small aria-label={`队伍平均 KDA ${numberText(kda, 2)}`}>{numberText(kda, 2)} KDA</small>}
         <small className="rh-team-sample">{available.length}/{team.members.length} 人有数据</small>
       </h3>
       <div className="rh-team-cards">
@@ -455,7 +455,8 @@ const TeamPlayerCard = memo(function TeamPlayerCard({ member, queueId, count, op
           </div>}
           <div className="rh-team-tags">
             {tags.map(({ field, text, tone }) => (
-              <HistoryAssetTooltip key={field} title={field==='score' ? `${playerScoreLabel(scoreSystem)} · ${playerScoreRange(scoreSystem)} 分` : text} compact focusable={false} asChild><span className={`rh-team-tag rh-team-tag-${tone}`} data-score-system={field==='score'?scoreSystem:undefined}>{text}</span></HistoryAssetTooltip>
+              <span key={field} className={`rh-team-tag rh-team-tag-${tone}`} data-score-system={field==='score'?scoreSystem:undefined}
+                data-sona-tooltip={field === 'score' ? `${playerScoreLabel(scoreSystem)} · ${playerScoreRange(scoreSystem)} 分` : undefined}>{text}</span>
             ))}
             <HistoryPerformanceStats matches={valid} section="team" />
           </div>
@@ -464,7 +465,7 @@ const TeamPlayerCard = memo(function TeamPlayerCard({ member, queueId, count, op
             {valid.map((match) => (
               <button type="button" className={`rh-team-match rh-team-match-${match.outcome}`} key={match.id}
                 aria-label="打开这场对局的详细战报" onClick={() => onMatch(match)}>
-                <HistoryImage src={getChampIcon(match.player.championId)} label={championName(match.player.championId)} />
+                <HistoryImage src={getChampIcon(match.player.championId)} label={championName(match.player.championId)} nativeTooltip={false} />
                 <span>
                   <strong>{getQueueName(match.game.json.queueId)}</strong>
                   <small>{Number.isFinite(match.game.json.gameCreation) ? recentMatchDate.format(match.game.json.gameCreation) : '时间未知'} · {match.outcome === 'win' ? '胜' : '负'}</small>

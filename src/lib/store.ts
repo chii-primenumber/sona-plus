@@ -40,6 +40,7 @@ export interface SonaConfig {
   /** 战绩界面各区隐藏的字段。新增字段默认显示。 */
   historyHiddenFields: HistoryHiddenFields
   historyPerformanceFields: PerformanceSelection
+  historyCollapsedPanels: string[]
   historyRecentPlayers: HistoryPlayer[]
   theme: SonaTheme
   playerScoreSystem: PlayerScoreSystem
@@ -296,6 +297,7 @@ export interface SonaConfig {
 const DEFAULT_CONFIG: SonaConfig = {
   historyHiddenFields: {},
   historyPerformanceFields: DEFAULT_PERFORMANCE_FIELDS,
+  historyCollapsedPanels: [],
   historyRecentPlayers: [],
   theme: 'client',
   playerScoreSystem: 'akari',

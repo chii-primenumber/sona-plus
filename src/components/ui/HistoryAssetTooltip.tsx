@@ -1,15 +1,16 @@
 import { cloneElement, isValidElement, useEffect, useId, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { GameDescription } from './GameDescription'
-export interface TooltipStat { label: string; value: string }
+export interface TooltipStat { label: string; value: string; tone?: 'physical' | 'magic' | 'true' | 'unknown' }
 
-export function HistoryAssetTooltip({ className, title, subtitle, description, icon, stats, footer, onShow, children, compact = false, focusable = true, asChild = false }: {
+export function HistoryAssetTooltip({ className, title, subtitle, description, icon, stats, statsLabel, footer, onShow, children, compact = false, focusable = true, asChild = false }: {
   className?: string
   title: string
   subtitle?: string
   description?: string
   icon?: string
   stats?: TooltipStat[]
+  statsLabel?: string
   footer?: string
   onShow?: () => void
   children: ReactNode
@@ -55,13 +56,13 @@ export function HistoryAssetTooltip({ className, title, subtitle, description, i
   return (
     <>{anchor}
       {visible && anchorRef.current && <TooltipBubble anchor={anchorRef.current} id={id} title={title} subtitle={subtitle}
-        description={description} icon={icon} stats={stats} footer={footer} compact={compact} />}
+        description={description} icon={icon} stats={stats} statsLabel={statsLabel} footer={footer} compact={compact} />}
     </>
   )
 }
 
-export function TooltipBubble({ anchor, id, title, subtitle, description, icon, stats, footer, compact = false }: {
-  anchor: HTMLElement; id?: string; title: string; subtitle?: string; description?: string; icon?: string; stats?: TooltipStat[]; footer?: string; compact?: boolean
+export function TooltipBubble({ anchor, id, title, subtitle, description, icon, stats, statsLabel = '英雄表现数据', footer, compact = false }: {
+  anchor: HTMLElement; id?: string; title: string; subtitle?: string; description?: string; icon?: string; stats?: TooltipStat[]; statsLabel?: string; footer?: string; compact?: boolean
 }) {
   const tooltipRef = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => {
@@ -93,7 +94,7 @@ export function TooltipBubble({ anchor, id, title, subtitle, description, icon, 
       <div><strong>{title}</strong>{subtitle && <small>{subtitle}</small>}</div>
     </div>
     {description && <div className="rh-asset-tooltip-description"><GameDescription text={description} /></div>}
-    {stats && stats.length>0 && <table className="rh-tooltip-stats" aria-label="英雄表现数据"><tbody>
+    {stats && stats.length>0 && <table className="rh-tooltip-stats" aria-label={statsLabel}><tbody>
       {Array.from({length:Math.ceil(stats.length/2)},(_,index)=>stats.slice(index*2,index*2+2)).map((row,index)=><tr key={index}>
         {row.map((stat)=><TooltipStatCells key={stat.label} stat={stat} />)}
         {row.length===1 && <td colSpan={2} />}
@@ -104,5 +105,6 @@ export function TooltipBubble({ anchor, id, title, subtitle, description, icon, 
 }
 
 function TooltipStatCells({stat}:{stat:TooltipStat}) {
-  return <><th scope="row">{stat.label}</th><td>{stat.value}</td></>
+  const tone = stat.tone ? `rh-tooltip-stat-${stat.tone}` : undefined
+  return <><th scope="row" className={tone}>{stat.label}</th><td className={tone}>{stat.value}</td></>
 }

@@ -31,6 +31,15 @@ export const HISTORY_DISPLAY_FIELDS = {
     ['badges', '最高输出等表现标签'],
     ['roster', '对局卡片的双方阵容'],
   ],
+  champions: [
+    ['total', '场次'],
+    ['winRate', '胜率'],
+    ['kda', 'KDA'],
+    ['participation', '参团'],
+    ['damageShare', '伤害占比'],
+    ['takenShare', '承伤占比'],
+    ['csPerMinute', '补刀 / 分'],
+  ],
   report: [
     ['kda', '击杀、死亡与助攻'],
     ['items', '装备'],

@@ -1,39 +1,65 @@
 import { HistorySelect } from './HistorySelect'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { Modal } from './Modal'
 import { HistoryDisplaySettings } from './HistoryDisplaySettings'
 import { HistoryTrendPanel } from './HistoryTrendPanel'
 import { HistoryCompareModal } from './HistoryCompareModal'
+import { HistoryCopyId } from './HistoryCopyId'
+import { HistoryEncounterButton, HistoryEncounterPreview, type EncounterTarget } from './HistoryEncounterPreview'
 import { PlayerSearchModal } from './PlayerSearchModal'
 import { HistoryPlayerName } from './HistoryPlayerName'
 import { HistoryAssetTooltip } from './HistoryAssetTooltip'
 import { HistoryPerformanceStats } from './HistoryPerformanceStats'
 import { HistoryScrollTop } from './HistoryScrollTop'
-import { RefreshIcon, SettingsIcon, SearchIcon } from './icons'
+import { ChevronLeftIcon, RefreshIcon, SettingsIcon, SearchIcon } from './icons'
 import { PlayerTagBadge, PlayerTagBookModal, PlayerTagEditorModal, TagBookIcon, TagBookmarkIcon } from './PlayerTagWidgets'
 import { usePlayerTag, usePlayerTagFeatureEnabled } from '@/lib/player-tags'
-import { ChampionStrip, HistoryImage, RankCards, SummaryStats, championName } from './HistoryWidgets'
+import { ChampionStrip, HistoryImage, MatchReport, RankCards, SummaryStats, championName } from './HistoryWidgets'
 import { HistoryMatchList } from './HistoryMatchList'
+import { HistoryChampionTable } from './HistoryChampionTable'
 import { getChampIcon, getPlayableQueues, getQueueName, getQueue, resolveCanonicalQueueId } from '@/lib/assets'
 import { deadline, fetchHistoryMastery, fetchHistoryRanks, fetchHistorySummoner, type HistoryMastery, type HistoryRank } from '@/lib/history-api'
 import { lcu, isMatchingQueue } from '@/lib/lcu'
 import { historyPlayerFromSummoner, historyServerName, rememberHistoryPlayer, type HistoryPlayer } from '@/lib/history-search'
-import { championStats, encounters, numberText, percentText, POSITION_NAMES, profileIconUrl, splitRiotId, summarize, toHistoryMatches } from '@/lib/history-model'
+import { championStats, encounters, numberText, POSITION_NAMES, profileIconUrl, splitRiotId, summarize, toHistoryMatches, validMatches, type HistoryMatch } from '@/lib/history-model'
 import { calculatePlayerScore, playerScoreLabel, playerScoreRange, formatPlayerScore } from '@/lib/player-score'
 import { usePlayerScoreSystem } from '@/lib/use-player-score'
 import { useHistoryPages } from '@/lib/use-history-pages'
 import { useHistoryHiddenFields } from '@/lib/use-history-display'
 import { isHistoryFieldVisible, type HistoryDisplayField } from '@/lib/history-display'
 import { getHistoryEpoch, historyRequests } from '@/lib/shared-requests'
+import { store } from '@/lib/store'
 import '@/styles/PersonalHistory.css'
 
 export interface PlayerHistoryModalProps { open: boolean; onClose: () => void; puuid: string; playerName: string; queueId?: number }
 const LANE_POSITIONS = ['TOP','JUNGLE','MIDDLE','BOTTOM','UTILITY']
+type SidebarPanelKey = 'scope' | 'summary' | 'champions' | 'mastery' | 'teammates' | 'opponents'
+const subscribeCollapsedPanels = (listener: () => void) => store.onChange('historyCollapsedPanels', listener)
+const getCollapsedPanels = () => store.get('historyCollapsedPanels')
 
 interface HistoryView {
   queueId: number; batchSize: number; championId: number; position: string; result: string; hideAborted: boolean
   tab: 'matches' | 'champions' | 'trend'; showAllMastery: boolean; expanded: string[]; sidebarTop: number; contentTop: number
   championSort: string; championDirection?: 'asc' | 'desc'; championMin: number
+  encounterFilter: EncounterTarget | null
+}
+
+function HistorySidebarPanel({ title, collapsed, onToggle, extra, children }: {
+  title: string; collapsed: boolean; onToggle: () => void; extra?: ReactNode; children: ReactNode
+}) {
+  const bodyId = useId()
+  return <section className="rh-panel">
+    <header className={`rh-panel-header${collapsed ? ' is-collapsed' : ''}`}>
+      <h3>{title}</h3>
+      {extra}
+      <button type="button" className="rh-panel-toggle" aria-label={`${collapsed ? '展开' : '收起'}${title}`}
+        aria-expanded={!collapsed} aria-controls={bodyId} onClick={onToggle}>
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"
+          strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m4 6 4 4 4-4" /></svg>
+      </button>
+    </header>
+    <div id={bodyId} className="rh-panel-body" hidden={collapsed}>{!collapsed && children}</div>
+  </section>
 }
 
 export function PlayerHistoryModal({ open, onClose, puuid, playerName, queueId }: PlayerHistoryModalProps) {
@@ -71,6 +97,8 @@ function PlayerHistoryContent({ open, target, defaultQueueId, onSelectPlayer, on
   const [hideAborted, setHideAborted] = useState(savedView?.hideAborted ?? true)
   const [tab, setTab] = useState<'matches' | 'champions' | 'trend'>(savedView?.tab ?? 'matches')
   const [expanded, setExpanded] = useState(() => new Set(savedView?.expanded ?? []))
+  const storedCollapsedPanels = useSyncExternalStore(subscribeCollapsedPanels, getCollapsedPanels)
+  const collapsedPanels = useMemo(() => new Set(storedCollapsedPanels as SidebarPanelKey[]), [storedCollapsedPanels])
   const [championSort, setChampionSort] = useState(savedView?.championSort ?? 'total')
   const [championDirection, setChampionDirection] = useState<'asc'|'desc'>(savedView?.championDirection ?? 'desc')
   const [championMin, setChampionMin] = useState(savedView?.championMin ?? 1)
@@ -87,7 +115,11 @@ function PlayerHistoryContent({ open, target, defaultQueueId, onSelectPlayer, on
   const [showCompare, setShowCompare] = useState(false)
   const [showTagEditor, setShowTagEditor] = useState(false)
   const [showTagBook, setShowTagBook] = useState(false)
-  const [copyStatus, setCopyStatus] = useState('')
+  const [pinnedEncounter, setPinnedEncounter] = useState<{ target: EncounterTarget; left: number; top: number; keyboard: boolean } | null>(null)
+  const [encounterFilter, setEncounterFilter] = useState(savedView?.encounterFilter ?? null)
+  const [encounterMatch, setEncounterMatch] = useState<HistoryMatch | null>(null)
+  const encounterMatchTrigger = useRef<HTMLButtonElement | null>(null)
+  const focusEncounterReport = useCallback((node: HTMLDivElement | null) => node?.focus({ preventScroll: true }), [])
   const tagFeatureEnabled = usePlayerTagFeatureEnabled()
   const playerTag = usePlayerTag(target.puuid)
   const sidebarRef = useRef<HTMLElement | null>(null)
@@ -99,7 +131,7 @@ function PlayerHistoryContent({ open, target, defaultQueueId, onSelectPlayer, on
   const show = (field: HistoryDisplayField<'history'>) => isHistoryFieldVisible(hidden, 'history', field)
   const showRanks = show('ranks'), showMastery = show('mastery')
   const viewRef = useRef<HistoryView>(null!)
-  viewRef.current = { queueId, batchSize, championId, position, result, hideAborted, tab, showAllMastery, expanded: [...expanded], sidebarTop: 0, contentTop: 0, championSort, championDirection, championMin }
+  viewRef.current = { queueId, batchSize, championId, position, result, hideAborted, tab, showAllMastery, expanded: [...expanded], sidebarTop: 0, contentTop: 0, championSort, championDirection, championMin, encounterFilter }
   useLayoutEffect(() => {
     const sidebar = sidebarRef.current, content = contentRef.current
     return () => rememberView({ ...viewRef.current, sidebarTop: sidebar?.scrollTop ?? 0, contentTop: content?.scrollTop ?? 0 })
@@ -108,7 +140,7 @@ function PlayerHistoryContent({ open, target, defaultQueueId, onSelectPlayer, on
   useLayoutEffect(() => {
     if (contentMounted.current && contentRef.current) contentRef.current.scrollTop = 0
     contentMounted.current = true
-  }, [queueId, tab])
+  }, [queueId, tab, encounterFilter])
   const restored = useRef(false)
   useLayoutEffect(() => {
     if (pages.loading || restored.current) return
@@ -121,8 +153,15 @@ function PlayerHistoryContent({ open, target, defaultQueueId, onSelectPlayer, on
 
   useEffect(() => {
     if (open) rememberHistoryPlayer(target)
-    else { setShowSettings(false); setShowSearch(false) }
+    else { setShowSettings(false); setShowSearch(false); setPinnedEncounter(null); setEncounterMatch(null) }
   }, [open, target])
+  useEffect(() => {
+    const sidebar = sidebarRef.current
+    if (!pinnedEncounter || !sidebar) return
+    const closeOnScroll = () => setPinnedEncounter(null)
+    sidebar.addEventListener('scroll', closeOnScroll, { passive: true })
+    return () => sidebar.removeEventListener('scroll', closeOnScroll)
+  }, [pinnedEncounter])
 
   const onInspect = useCallback((puuid: string, name: string) => onSelectPlayer({ puuid, name, serverId: target.serverId }), [onSelectPlayer, target.serverId])
   const changeExpanded = useCallback((id: string, value: boolean) => setExpanded((previous) => {
@@ -164,17 +203,18 @@ function PlayerHistoryContent({ open, target, defaultQueueId, onSelectPlayer, on
   const filtered = useMemo(() => allMatches.filter((m) => (!championId || m.player.championId === championId) && (!activePosition || m.position === activePosition) && (!result || m.outcome === result) && (!hideAborted || (m.outcome !== 'remake' && m.outcome !== 'abort'))), [allMatches, championId, activePosition, result, hideAborted])
   const stats = useMemo(() => summarize(filtered), [filtered])
   const champions = useMemo(() => championStats(allMatches), [allMatches])
-  const filteredChampions = useMemo(() => championStats(filtered), [filtered])
-  const sortedChampions = useMemo(() => filteredChampions.filter((item) => item.total >= championMin).sort((a, b) => {
-    if (championSort === 'name') return championName(a.id).localeCompare(championName(b.id), 'zh-CN') * (championDirection === 'asc' ? 1 : -1)
-    const field = championSort as 'total' | 'winRate' | 'kda' | 'participation' | 'damageShare' | 'takenShare' | 'csPerMinute'
-    const left = a[field], right = b[field]
-    if (left == null || !Number.isFinite(left)) return right == null || !Number.isFinite(right) ? a.id-b.id : 1
-    if (right == null || !Number.isFinite(right)) return -1
-    return (right-left) * (championDirection === 'desc' ? 1 : -1) || b.total - a.total || a.id - b.id
-  }), [filteredChampions, championSort, championDirection, championMin])
+  const sameAsAll = filtered.length === allMatches.length
+  const filteredChampionCount = useMemo(() => sameAsAll ? champions.length : new Set(validMatches(filtered).map((m) => m.player.championId)).size, [sameAsAll, champions.length, filtered])
+  const filteredChampions = useMemo(() => tab !== 'champions' ? [] : sameAsAll ? champions : championStats(filtered), [tab, sameAsAll, champions, filtered])
   const teammates = useMemo(() => encounters(filtered, 'ally'), [filtered])
   const opponents = useMemo(() => encounters(filtered, 'enemy'), [filtered])
+  const findEncounter = (encounter: EncounterTarget) =>
+    (encounter.relation === 'ally' ? teammates : opponents).find((person) => person.puuid === encounter.puuid)
+  const filteredEncounter = encounterFilter ? findEncounter(encounterFilter) : undefined
+  const matchRows = useMemo(() => encounterFilter
+    ? filteredEncounter?.meetings.map(({ match }) => match) ?? []
+    : filtered, [encounterFilter, filteredEncounter, filtered])
+  const visibleMatches = tab === 'matches' ? matchRows : filtered
   const filteredGames = useMemo(() => filtered.map((match) => match.game), [filtered])
   const compareCandidates = useMemo(() => {
     const map = new Map<string, { puuid: string; name: string }>()
@@ -204,28 +244,49 @@ function PlayerHistoryContent({ open, target, defaultQueueId, onSelectPlayer, on
   const name = profile?.name || target.name || '玩家战绩'
   const identity = splitRiotId(name)
   const level = profile?.level ?? target.level
-  useEffect(() => setCopyStatus(''), [name])
-  const resetLocalFilters = () => { setChampionId(0); setPosition(''); setResult(''); setHideAborted(true) }
+  const resetLocalFilters = () => { setChampionId(0); setPosition(''); setResult(''); setHideAborted(true); setEncounterFilter(null) }
   const refresh = () => { pages.refresh(); setProfileRevision((n) => n + 1) }
+  const panel = (key: SidebarPanelKey) => ({
+    collapsed: collapsedPanels.has(key),
+    onToggle: () => {
+      const next = new Set(store.get('historyCollapsedPanels'))
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      store.set('historyCollapsedPanels', [...next])
+    },
+  })
+  const pinEncounter = (encounter: EncounterTarget, anchor: HTMLButtonElement, keyboard: boolean) => {
+    const shell = anchor.closest('.rh-history-shell')
+    if (!shell) return
+    const bounds = shell.getBoundingClientRect()
+    const card = anchor.getBoundingClientRect()
+    setPinnedEncounter((current) => (!keyboard && current) ? current : {
+      target: encounter, left: card.right - bounds.left + 8, top: card.top - bounds.top, keyboard,
+    })
+  }
 
-  return <div className="rh-shell rh-history-shell" data-testid="player-history">
+  return <div className="rh-shell rh-history-shell" data-testid="player-history"
+    onClickCapture={pinnedEncounter ? (event) => {
+      const clicked = event.target
+      if (clicked instanceof Element && event.currentTarget.contains(clicked) && !clicked.closest('.rh-encounter-preview')) {
+        if (clicked.closest('.rh-encounters button')) {
+          event.preventDefault()
+          event.stopPropagation()
+        }
+        setPinnedEncounter(null)
+      }
+    } : undefined}>
     <header className={`rh-header rh-profile-header${show('ranks') ? '' : ' rh-header-no-ranks'}`}>
-      <div className="rh-profile">{onBack && <button className="rh-back" type="button" onClick={onBack}>‹ 返回</button>}
-        <span className="rh-profile-portrait"><HistoryImage src={profileIconUrl(profile?.iconId ?? target.iconId)} label={name} className="rh-profile-icon" />
+      <div className="rh-profile">{onBack && <HistoryAssetTooltip title="返回" compact asChild>
+        <button className="rh-button rh-icon-button rh-profile-back" type="button" aria-label="返回" onClick={onBack}><ChevronLeftIcon /></button>
+      </HistoryAssetTooltip>}
+        <span className="rh-profile-portrait"><HistoryImage src={profileIconUrl(profile?.iconId ?? target.iconId)} label={name} className="rh-profile-icon" nativeTooltip={false} />
           {level != null && <small className="rh-profile-level">{level}</small>}
         </span>
         <div className="rh-profile-details">
           <div className="rh-profile-name">
-            <HistoryAssetTooltip title={name} compact focusable={false} asChild><h2 aria-label={name}>{identity.name}</h2></HistoryAssetTooltip>
-            {name !== '玩家战绩' && name !== '未知玩家' && <button type="button" className="rh-copy-id" aria-label="复制玩家 ID"
-              aria-description={copyStatus || undefined} onClick={async () => {
-                try { await navigator.clipboard.writeText(name); setCopyStatus('已复制') }
-                catch { setCopyStatus('复制失败') }
-              }}>
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" aria-hidden="true">
-                {copyStatus === '已复制' ? <path d="m3 8 3 3 7-7" /> : <><rect x="5" y="2" width="8" height="10" rx="1" /><path d="M3 5v8a1 1 0 0 0 1 1h6" /></>}
-              </svg>
-            </button>}
+            <h2 aria-label={name}>{identity.name}</h2>
+            {name !== '玩家战绩' && name !== '未知玩家' && <HistoryCopyId key={name} name={name} />}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             {identity.tag && <span className="rh-profile-tag">{identity.tag}</span>}
@@ -244,40 +305,49 @@ function PlayerHistoryContent({ open, target, defaultQueueId, onSelectPlayer, on
     </header>
     <div className="rh-workspace">
       <aside className="rh-sidebar rh-scroll-area" ref={sidebarRef}>
-        <section className="rh-panel"><h3>查询范围</h3><label>游戏模式<HistorySelect aria-label="游戏模式" value={queueId} onChangeValue={(value) => { setQueueId(Number(value)); resetLocalFilters() }}><option value={0}>全部模式</option>{queues.map((q) => <option key={q.id} value={q.id}>{q.name}</option>)}</HistorySelect></label><label>每次加载<HistorySelect aria-label="每次加载场次" value={batchSize} onChangeValue={(value) => setBatchSize(Number(value))}>{[20, 50, 100].map((count) => <option value={count} key={count}>{count} 场</option>)}</HistorySelect></label></section>
-        {show('summary') && <section className="rh-panel"><h3>近期总览 <small>{stats.total} 场</small></h3>{strength && <HistoryAssetTooltip title={`${playerScoreLabel(scoreSystem)} · ${playerScoreRange(scoreSystem)} 分`} compact focusable={false} asChild><div className="rh-score" data-score-system={scoreSystem}><span>{playerScoreLabel(scoreSystem)}</span><strong>{formatPlayerScore(strength.score,scoreSystem)}</strong></div></HistoryAssetTooltip>}<SummaryStats matches={filtered} /><HistoryPerformanceStats matches={filtered} section="history" />{stats.total > 0 && <div className="rh-summary-extra"><span>{stats.streak}</span><span>蓝方 {stats.blue} / 红方 {stats.red}</span></div>}</section>}
-        {show('champions') && <section className="rh-panel">
-          <h3>近期常玩英雄</h3>
+        <HistorySidebarPanel title="查询范围" {...panel('scope')}>
+          <label>游戏模式<HistorySelect aria-label="游戏模式" value={queueId} onChangeValue={(value) => { setQueueId(Number(value)); resetLocalFilters() }}><option value={0}>全部模式</option>{queues.map((q) => <option key={q.id} value={q.id}>{q.name}</option>)}</HistorySelect></label>
+          <label>每次加载<HistorySelect aria-label="每次加载场次" value={batchSize} onChangeValue={(value) => setBatchSize(Number(value))}>{[20, 50, 100].map((count) => <option value={count} key={count}>{count} 场</option>)}</HistorySelect></label>
+        </HistorySidebarPanel>
+        {show('summary') && <HistorySidebarPanel title="近期总览" {...panel('summary')} extra={<small className="rh-muted">{stats.total} 场</small>}>
+          {strength && <HistoryAssetTooltip title={`${playerScoreLabel(scoreSystem)} · ${playerScoreRange(scoreSystem)} 分`} compact focusable={false} asChild><div className="rh-score" data-score-system={scoreSystem}><span>{playerScoreLabel(scoreSystem)}</span><strong>{formatPlayerScore(strength.score,scoreSystem)}</strong></div></HistoryAssetTooltip>}
+          <SummaryStats matches={filtered} />
+          <HistoryPerformanceStats matches={filtered} section="history" />
+          {stats.total > 0 && <div className="rh-summary-extra"><span>{stats.streak}</span><span>蓝方 {stats.blue} / 红方 {stats.red}</span></div>}
+        </HistorySidebarPanel>}
+        {show('champions') && <HistorySidebarPanel title="近期常玩英雄" {...panel('champions')}>
           <ChampionStrip matches={allMatches} selectedId={championId} limit={12}
             onSelect={(id) => {
               setChampionId((current) => current === id ? 0 : id)
+              setEncounterFilter(null)
               setTab('matches')
             }}
           />
           <p className="rh-footnote">再次点击当前英雄可显示全部英雄的战绩</p>
-        </section>}
-        {show('mastery') && <section className="rh-panel"><h3>英雄点数 <button type="button" className="rh-text-button" onClick={() => setShowAllMastery(!showAllMastery)}>{showAllMastery ? '收起' : '更多'}</button></h3>{mastery ? mastery.length ? <div className="rh-mastery">{mastery.slice(0, showAllMastery ? 60 : 6).map((m) => <button type="button" key={m.championId} onClick={() => { setChampionId(m.championId); setTab('matches') }} aria-label="查看该英雄战绩"><HistoryImage src={getChampIcon(m.championId)} label={championName(m.championId)} /><span><strong>{championName(m.championId)}</strong><small>{m.championLevel} 级</small></span><b>{numberText(m.championPoints)}</b></button>)}</div> : <p className="rh-muted">暂无英雄点数记录</p> : <p className="rh-muted">{masteryStatus}</p>}</section>}
-        {([['teammates', '最近队友', teammates], ['opponents', '最近对手', opponents]] as const).filter(([field]) => show(field)).map(([, title, people]) => (
-          <section className="rh-panel" key={title}>
-            <h3>{title}</h3>
+        </HistorySidebarPanel>}
+        {show('mastery') && <HistorySidebarPanel title="英雄点数" {...panel('mastery')}
+          extra={!collapsedPanels.has('mastery') && <button type="button" className="rh-text-button" onClick={() => setShowAllMastery(!showAllMastery)}>{showAllMastery ? '只看前 6' : '更多'}</button>}>
+          {mastery ? mastery.length ? <div className="rh-mastery">{mastery.slice(0, showAllMastery ? 60 : 6).map((m) => <button type="button" key={m.championId} onClick={() => { setChampionId(m.championId); setEncounterFilter(null); setTab('matches') }} aria-label="查看该英雄战绩"><HistoryImage src={getChampIcon(m.championId)} label={championName(m.championId)} nativeTooltip={false} /><span><strong data-sona-overflow-tooltip={championName(m.championId)}>{championName(m.championId)}</strong><small>{m.championLevel} 级</small></span><b>{numberText(m.championPoints)}</b></button>)}</div> : <p className="rh-muted">暂无英雄点数记录</p> : <p className="rh-muted">{masteryStatus}</p>}
+        </HistorySidebarPanel>}
+        {([['teammates', '最近队友', teammates, 'ally'], ['opponents', '最近对手', opponents, 'enemy']] as const).filter(([field]) => show(field)).map(([field, title, people, relation]) => (
+          <HistorySidebarPanel title={title} key={title} {...panel(field)}>
             <div className="rh-encounters">
               {people.slice(0, 8).map((person) => (
-                <button type="button" key={person.puuid} onClick={() => onInspect(person.puuid, person.name)} aria-label={person.name}>
-                  <HistoryImage src={profileIconUrl(person.profileIcon)} label={person.name} nativeTooltip={false} />
-                  <HistoryPlayerName name={person.name} showTag />
-                  <small>{person.count} 场 · {person.wins} 胜 {person.losses} 负</small>
-                </button>
+                <HistoryEncounterButton key={person.puuid} person={person} blocked={!open || Boolean(pinnedEncounter)}
+                  selected={pinnedEncounter?.target.puuid === person.puuid && pinnedEncounter.target.relation === relation}
+                  onPreview={(anchor, keyboard) => pinEncounter({ puuid: person.puuid, name: person.name, relation }, anchor, keyboard)}
+                  onInspect={() => onInspect(person.puuid, person.name)} />
               ))}
             </div>
             {!people.length && <p className="rh-muted">暂无可用记录</p>}
-          </section>
+          </HistorySidebarPanel>
         ))}
       </aside>
       <main className="rh-main">
         <div className="rh-main-toolbar">
           <div className="rh-tabs">
-            <button type="button" className={tab === 'matches' ? 'is-active' : ''} onClick={() => setTab('matches')}>战绩明细 <small>{filtered.length}</small></button>
-            <button type="button" className={tab === 'champions' ? 'is-active' : ''} onClick={() => setTab('champions')}>英雄统计 <small>{filteredChampions.length}</small></button>
+            <button type="button" className={tab === 'matches' ? 'is-active' : ''} onClick={() => setTab('matches')}>战绩明细 <small>{matchRows.length}</small></button>
+            <button type="button" className={tab === 'champions' ? 'is-active' : ''} onClick={() => setTab('champions')}>英雄统计 <small>{filteredChampionCount}</small></button>
             <button type="button" className={tab === 'trend' ? 'is-active' : ''} onClick={() => setTab('trend')}>趋势分析 <small>{filtered.length}</small></button>
           </div>
           <form className="rh-player-search" onSubmit={(event) => { event.preventDefault(); setShowSearch(true) }} role="search">
@@ -288,19 +358,45 @@ function PlayerHistoryContent({ open, target, defaultQueueId, onSelectPlayer, on
           <span className="rh-muted">{pages.updatedAt ? `更新于 ${new Date(pages.updatedAt).toLocaleTimeString('zh-CN')}` : '正在查询'}</span>
         </div>
         <div className="rh-local-filters"><HistorySelect aria-label="筛选英雄" value={championId} onChangeValue={(value) => setChampionId(Number(value))}><option value={0}>全部英雄</option>{champions.map((c) => <option key={c.id} value={c.id}>{championName(c.id)} · {c.total} 场</option>)}{championId > 0 && !champions.some((c) => c.id === championId) && <option value={championId}>{championName(championId)} · 当前未加载</option>}</HistorySelect>{showPositionFilter && <HistorySelect positions aria-label="筛选位置" value={activePosition} onChangeValue={(value) => setPosition(value)}><option value="">全部分路</option>{LANE_POSITIONS.map((key) => <option key={key} value={key}>{POSITION_NAMES[key]}</option>)}</HistorySelect>}<HistorySelect aria-label="筛选胜负" value={result} onChangeValue={(value) => setResult(value)}><option value="">全部胜负</option><option value="win">胜利</option><option value="loss">失败</option></HistorySelect><label><input type="checkbox" checked={hideAborted} onChange={(e) => setHideAborted(e.target.checked)} />隐藏重开 / 终止</label><button type="button" className="rh-text-button" onClick={resetLocalFilters}>重置筛选</button></div>
+        {encounterFilter && <div className="rh-encounter-filter">
+          <span>{encounterFilter.relation === 'ally' ? '同队' : '交手'} · <HistoryPlayerName name={encounterFilter.name} showTag /> · <b>{matchRows.length}</b> 场{tab !== 'matches' && <em className="rh-filter-scope" data-sona-tooltip="交手筛选仅作用于战绩明细页">仅明细</em>}</span>
+          <button type="button" className="rh-text-button" onClick={() => setEncounterFilter(null)}>清除交手筛选</button>
+        </div>}
         {pages.scanLimit && <div className="rh-notice">当前范围为最近 {pages.scanLimit} 场。</div>}
         {pages.error && <div className="rh-error" role="alert">{pages.error}<button type="button" onClick={allMatches.length && pages.hasMore ? () => void pages.loadMore() : refresh}>重试</button></div>}
         <div className="rh-content rh-scroll-area" ref={contentRef}>
-          {pages.loading ? <div className="rh-empty"><span className="rh-spinner" />正在加载战绩…<span className="rh-kaomoji" aria-hidden="true">(｡･ω･｡)</span></div> : !filtered.length ? <div className="rh-empty"><span>{allMatches.length ? '当前筛选下没有已加载对局。可重置筛选或继续加载。' : pages.error ? '战绩查询未完成，请重试。' : '当前查询范围没有对局记录。'}</span>{!pages.error && <span className="rh-kaomoji" aria-hidden="true">(・ω・)</span>}</div> : tab === 'matches' ? <HistoryMatchList matches={filtered} hidden={hidden} onInspect={onInspect} scrollRef={contentRef} expanded={expanded} onExpandedChange={changeExpanded} /> : tab === 'trend' ? <HistoryTrendPanel matches={filtered} games={filteredGames} puuid={target.puuid} system={scoreSystem} score={strength} /> : <div className="rh-champion-results"><div className="rh-champion-controls">
+          {pages.loading ? <div className="rh-empty"><span className="rh-spinner" />正在加载战绩…<span className="rh-kaomoji" aria-hidden="true">(｡･ω･｡)</span></div> : !visibleMatches.length ? <div className="rh-empty"><span>{allMatches.length ? '当前筛选下没有已加载对局。可重置筛选或继续加载。' : pages.error ? '战绩查询未完成，请重试。' : '当前查询范围没有对局记录。'}</span>{!pages.error && <span className="rh-kaomoji" aria-hidden="true">(・ω・)</span>}</div> : tab === 'matches' ? <HistoryMatchList matches={matchRows} hidden={hidden} onInspect={onInspect} scrollRef={contentRef} expanded={expanded} onExpandedChange={changeExpanded} /> : tab === 'trend' ? <HistoryTrendPanel matches={filtered} games={filteredGames} puuid={target.puuid} system={scoreSystem} score={strength} /> : <div className="rh-champion-results"><div className="rh-champion-controls">
             <label>最低场次<HistorySelect aria-label="英雄统计最低场次" value={championMin} onChangeValue={(value) => setChampionMin(Number(value))}>{[1,3,5,10,20].map((count) => <option key={count} value={count}>{count} 场</option>)}</HistorySelect></label>
-            <span className="rh-muted">{sortedChampions.length} 位英雄</span>
-          </div><div className="rh-table-scroll"><table className="rh-champion-table"><thead><tr>{[['name','英雄'],['total','场次'],['winRate','胜率'],['kda','KDA'],['participation','参团'],['damageShare','伤害占比'],['takenShare','承伤占比'],['csPerMinute','补刀 / 分']].map(([key,label]) => <th key={key} aria-sort={championSort===key ? championDirection==='asc'?'ascending':'descending' : 'none'}><button type="button" className="rh-column-sort" data-sort-key={key} aria-label={`${label}排序`} onClick={()=>{if(championSort===key)setChampionDirection((value)=>value==='desc'?'asc':'desc');else {setChampionSort(key);setChampionDirection(key==='name'?'asc':'desc')}}}>{label}<svg width="10" height="12" viewBox="0 0 10 12" aria-hidden="true" fill="currentColor"><path opacity={championSort===key&&championDirection==='asc'?1:.3} d="m5 1 4 4H1z"/><path opacity={championSort===key&&championDirection==='desc'?1:.3} d="m5 11 4-4H1z"/></svg></button></th>)}</tr></thead><tbody>{sortedChampions.map((c) => <tr key={c.id}><td><button type="button" className="rh-player-link" onClick={() => { setChampionId(c.id); setTab('matches') }}><HistoryImage src={getChampIcon(c.id)} label={championName(c.id)} /><span>{championName(c.id)}</span></button></td><td>{c.total}</td><td>{percentText(c.winRate)}</td><td>{numberText(c.kda, 2)}</td><td>{percentText(c.participation)}</td><td>{percentText(c.damageShare)}</td><td>{percentText(c.takenShare)}</td><td>{numberText(c.csPerMinute, 1)}</td></tr>)}</tbody></table></div>{!sortedChampions.length && <div className="rh-empty">没有达到最低场次的英雄</div>}</div>}
-          {!pages.loading && <div className="rh-load-more"><HistoryAssetTooltip title={pages.loadingMore ? '正在加载…' : pages.hasMore ? `继续加载 ${batchSize} 场` : '已加载完毕'} compact asChild><button type="button" className="rh-button rh-icon-button" aria-label={pages.loadingMore ? '正在加载…' : pages.hasMore ? `继续加载 ${batchSize} 场` : '已加载完毕'} disabled={!pages.hasMore || pages.loadingMore} onClick={() => void pages.loadMore()}>{pages.loadingMore ? <span className="rh-spinner" /> : <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>}</button></HistoryAssetTooltip></div>}
+            <span className="rh-muted">{filteredChampions.filter((champion) => champion.total >= championMin).length} 位英雄</span>
+          </div>
+            <HistoryChampionTable champions={filteredChampions} minimum={championMin} hidden={hidden}
+              sort={championSort} direction={championDirection}
+              onSort={(key, direction) => { setChampionSort(key); setChampionDirection(direction) }}
+              onSelect={(id) => { setChampionId(id); setEncounterFilter(null); setTab('matches') }} />
+          </div>}
+          {!pages.loading && <div className="rh-load-more"><HistoryAssetTooltip title={pages.loadingMore ? '正在加载…' : pages.hasMore ? `继续加载 ${batchSize} 场` : '已加载完毕'} compact focusable={false}><button type="button" className="rh-button rh-icon-button" aria-label={pages.loadingMore ? '正在加载…' : pages.hasMore ? `继续加载 ${batchSize} 场` : '已加载完毕'} disabled={!pages.hasMore || pages.loadingMore} onClick={() => void pages.loadMore()}>{pages.loadingMore ? <span className="rh-spinner" /> : <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>}</button></HistoryAssetTooltip></div>}
         </div>
       </main>
     </div>
-    <HistoryScrollTop targets={scrollTargets} resetKey={`${open}:${target.puuid}:${queueId}:${tab}:${championId}:${position}:${result}:${hideAborted}:${pages.loading}`} />
-    <HistoryDisplaySettings open={open && showSettings} onClose={() => setShowSettings(false)} initialSection="history" />
+    <HistoryScrollTop targets={scrollTargets} resetKey={`${open}:${target.puuid}:${queueId}:${tab}:${championId}:${position}:${result}:${hideAborted}:${encounterFilter?.puuid}:${encounterFilter?.relation}:${pages.loading}`} />
+    {open && pinnedEncounter && <HistoryEncounterPreview {...pinnedEncounter} person={findEncounter(pinnedEncounter.target)}
+      escapeDisabled={Boolean(encounterMatch)}
+      onClose={() => setPinnedEncounter(null)}
+      onExpand={() => { setEncounterFilter(pinnedEncounter.target); setTab('matches'); setPinnedEncounter(null) }}
+      onInspect={() => onInspect(pinnedEncounter.target.puuid, pinnedEncounter.target.name)}
+      onMatch={(match, trigger) => { encounterMatchTrigger.current = trigger; setEncounterMatch(match) }} />}
+    <Modal open={open && Boolean(encounterMatch)} onClose={() => {
+      setEncounterMatch(null)
+      encounterMatchTrigger.current?.focus({ preventScroll: true })
+    }} careerBackground
+      width="min(1200px, 95vw)" height="min(720px, 88vh)">
+      {encounterMatch && <div className="rh-shell rh-team-match-detail" ref={focusEncounterReport} tabIndex={-1}
+        data-testid="encounter-match-report" data-match-id={encounterMatch.id}>
+        <h2>{getQueueName(encounterMatch.game.json.queueId)} · 单场战报</h2>
+        <MatchReport game={encounterMatch.game} focusPuuid={encounterMatch.player.puuid} onInspect={onInspect} />
+      </div>}
+    </Modal>
+    <HistoryDisplaySettings open={open && showSettings} onClose={() => setShowSettings(false)} initialSection={tab === 'champions' ? 'champions' : 'history'} />
     <PlayerSearchModal open={open && showSearch} initialQuery={searchText} onClose={() => setShowSearch(false)} onSelect={(player) => {
       setShowSearch(false)
       setSearchText('')

@@ -17,3 +17,11 @@
   background: rgba(194, 186, 218, .36);
   border-radius: 999px;
 }
+
+/* Keep scrollbar idle-hide consistent across all panels, highlighting in gold on edge hover or active scroll. */
+:is(#sona-root, .sona-modal-overlay, .sobp) :is(.rh-table-scroll, .sbl-picker, .sbl-dropdown):is([data-sona-scrollbar-hover], [data-sona-scrolling])::-webkit-scrollbar-thumb,
+:is(#sona-root, .sona-modal-overlay, .sobp) :is(.rh-table-scroll, .sbl-picker, .sbl-dropdown)::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--sona-accent-rgb) / .95) !important;
+  border-color: rgb(var(--sona-accent-rgb) / .16) !important;
+  box-shadow: 0 0 5px rgb(var(--sona-accent-rgb) / .45) !important;
+}

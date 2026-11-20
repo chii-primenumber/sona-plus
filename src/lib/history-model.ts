@@ -23,7 +23,7 @@ export const POSITION_NAMES: Record<string, string> = {
 
 /** Missing measurements stay missing. In particular the upstream LCU adapter synthesizes these zeros. */
 export function metric(player: SgpParticipantLol, key: keyof SgpParticipantLol, game?: SgpGameSummaryLol): number | null {
-  if (game?.sonaDataSource === 'lcu' && ['totalDamageShieldedOnTeammates', 'totalHealsOnTeammates', 'totalTimeSpentDead'].includes(key)) return null
+  if (game?.sonaDataSource === 'lcu' && ['totalDamageShieldedOnTeammates', 'totalHealsOnTeammates', 'totalTimeSpentDead', 'objectivesStolen'].includes(key)) return null
   return finite(player[key])
 }
 
@@ -156,23 +156,40 @@ export function championStats(matches: HistoryMatch[]) {
     .sort((a, b) => b.total - a.total || (b.winRate ?? 0) - (a.winRate ?? 0))
 }
 
-export function encounters(matches: HistoryMatch[], relation: 'ally' | 'enemy') {
-  const people = new Map<string, { puuid: string; name: string; profileIcon: number | null; count: number; wins: number; losses: number }>()
+export type EncounterRelation = 'ally' | 'enemy'
+
+export interface RecentEncounter {
+  puuid: string
+  name: string
+  profileIcon: number | null
+  wins: number
+  losses: number
+  meetings: { match: HistoryMatch; player: SgpParticipantLol }[]
+}
+
+function isRealPuuid(puuid: string | null | undefined): puuid is string {
+  return Boolean(puuid && !/^0+(-0+)*$/.test(puuid))
+}
+
+export function encounters(matches: HistoryMatch[], relation: EncounterRelation) {
+  const people = new Map<string, RecentEncounter>()
   for (const match of validMatches(matches)) {
     const seen = new Set<string>()
     for (const player of match.game.json.participants) {
-      if (!player.puuid || player.puuid === match.player.puuid || seen.has(player.puuid)) continue
+      if (!isRealPuuid(player.puuid) || player.puuid === match.player.puuid || seen.has(player.puuid)) continue
       seen.add(player.puuid)
       const same = teamKey(player, match.game) === teamKey(match.player, match.game)
       if (same !== (relation === 'ally')) continue
       const icon = finite(player.profileIcon)
-      const entry = people.get(player.puuid) ?? { puuid: player.puuid, name: riotName(player), profileIcon: null, count: 0, wins: 0, losses: 0 }
-      if (entry.profileIcon == null && icon != null && icon >= 0) entry.profileIcon = icon
-      entry.count++; if (match.outcome === 'win') entry.wins++; else entry.losses++
+      const entry = people.get(player.puuid) ?? { puuid: player.puuid, name: riotName(player), profileIcon: null, wins: 0, losses: 0, meetings: [] }
+      if (icon != null && icon >= 0 && (entry.profileIcon == null || (entry.profileIcon === 0 && icon > 0))) entry.profileIcon = icon
+      entry.meetings.push({ match, player })
+      if (match.outcome === 'win') entry.wins++
+      else entry.losses++
       people.set(player.puuid, entry)
     }
   }
-  return [...people.values()].sort((a, b) => b.count - a.count || b.wins - a.wins)
+  return [...people.values()].sort((a, b) => b.meetings.length - a.meetings.length || b.wins - a.wins)
 }
 
 export function profileIconUrl(icon: number | null | undefined): string | undefined {

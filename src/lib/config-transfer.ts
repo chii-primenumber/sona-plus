@@ -101,7 +101,7 @@ export function serializeSonaConfig(options: { includeAccountData?: boolean } = 
     ;(config as Record<string, unknown>)[key] = snapshot[key]
   }
 
-  const version = typeof __PLUGIN_VERSION__ === 'string' ? __PLUGIN_VERSION__ : '1.2.0'
+  const version = typeof __PLUGIN_VERSION__ === 'string' ? __PLUGIN_VERSION__ : '1.3.0'
   const payload: SonaConfigExportPayload = {
     schema: 1,
     app: 'sona-plus',

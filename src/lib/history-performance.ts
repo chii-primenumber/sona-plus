@@ -1,7 +1,8 @@
 import { finite, mean, metric, numberText, percentText, share, validMatches, type HistoryMatch } from './history-model'
 import type { SgpGameSummaryLol, SgpParticipantLol } from '@/types/sgp'
+import type { HistoryDisplaySection } from './history-display'
 
-export type PerformanceSection = 'team' | 'history' | 'report'
+export type PerformanceSection = HistoryDisplaySection
 export type PerformanceSelection = Partial<Record<PerformanceSection, string[]>>
 export const DEFAULT_PERFORMANCE_FIELDS: PerformanceSelection = { team: ['damageGold'], history: [], report: [] }
 type PerformanceMatch = Pick<HistoryMatch, 'player' | 'game' | 'duration' | 'cs' | 'csPerMinute'>
@@ -22,7 +23,7 @@ const all: PerformanceSection[] = ['team','history','report']
 const teamHistory: PerformanceSection[] = ['team','history']
 function stat(key: string, label: string, short: string, group: string, read: PerformanceStat['read'], definition: string,
   decimals = 0, percent = false, sections: PerformanceSection[] = all): PerformanceStat {
-  return {key,label,short,group,read,definition,decimals,percent,sections}
+  return {key,label,short,group,read,definition,decimals,percent,sections: key === 'csMinute' ? sections : [...sections, 'champions']}
 }
 
 export const PERFORMANCE_STATS: PerformanceStat[] = [

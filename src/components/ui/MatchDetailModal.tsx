@@ -219,8 +219,8 @@ function ParticipantRow({
         </div>
       </div>
 
-      <div className="smd-player-identity" title={name}>
-        <button className="smd-player-name" onClick={handleCopyName} type="button">
+      <div className="smd-player-identity">
+        <button className="smd-player-name" onClick={handleCopyName} type="button" title={name}>
           <span>{identity?.gameName ?? translate('matchDetail.playerFallback', { id: participant.participantId })}</span>
         </button>
         <strong className="smd-kda">

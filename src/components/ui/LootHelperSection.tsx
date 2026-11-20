@@ -240,7 +240,7 @@ export function LootHelperSection() {
                   className={`sona-reward-item sona-loot-item${selected ? ' sona-reward-item--selected' : ''}${!canToggle ? ' sona-loot-item--kept' : ''}`}
                   disabled={busy || !canToggle}
                   onClick={() => toggleItem(shard.lootId, canToggle)}
-                  title={`${shard.name} · 拥有状态：${shard.owned ? '已拥有' : '未拥有'} · 单价 ${shard.disenchantValue} · 拆 ${selected ? disenchantCount : 0} 留 ${selected ? keepCount : shard.count}`}
+                  data-sona-tooltip={`每个 +${shard.disenchantValue} 精粹 · 保留 ${selected ? keepCount : shard.count} 个`}
                 >
                   {selected && <span className="sona-reward-item-check" aria-hidden>✓</span>}
                   <span className="sona-reward-item-thumb">
